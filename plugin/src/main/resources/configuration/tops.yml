@@ -1,0 +1,60 @@
+# _______
+#|__   __|
+#   | | ___  _ __  ___
+#   | |/ _ \| '_ \/ __|
+#   | | (_) | |_) \__ \
+#   |_|\___/| .__/|___/
+#           | |
+#           |_|
+#
+# Tops configuration file
+# Support: https://discord.blakube.com/
+# Documentation: https://docs.blakube.com/bk-tops/intro/introduction/
+
+money:
+  # Type: "normal" (permanent) or "timed" (reset every X time, check in the wiki)
+  type: normal
+  # Amount of the top
+  size: 15
+  # Placeholder from PlaceholderAPI
+  provider: "%vault_eco_balance%"
+  # Queue configuration
+  queues:
+    # Process online players periodically?
+    online: true
+    # Delay in ticks of each loop if the option above is marked as true
+    online-interval: 900
+    # Check periodically the top with offline players?
+    rotative: false
+    # Amount to verify if the option above is marked as true
+    rotative-size: 50
+  # How to process queues
+  processing:
+    # How much entries will be processed per tick?
+    batch-size: 5
+    # Delay between batches
+    tick-delay: 1
+
+kills_perma:
+  type: normal
+  size: 15
+  provider: "%statistic_player_kills%"
+  queues:
+    online: true
+    online-interval: 600
+    rotative: false
+  processing:
+    batch-size: 5
+
+kills_monthly:
+  type: timed
+  size: 15
+  # reset is only for timed, available: hourly | daily | weekly | monthly | "* * * * *"
+  reset: "monthly"
+  provider: "%statistic_player_kills%"
+  queues:
+    online: true
+    online-interval: 600
+    rotative: false
+  processing:
+    batch-size: 5

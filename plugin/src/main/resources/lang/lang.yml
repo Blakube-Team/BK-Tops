@@ -1,0 +1,36 @@
+#  _
+# | |
+# | |     __ _ _ __   __ _
+# | |    / _` | '_ \ / _` |
+# | |___| (_| | | | | (_| |
+# |______\__,_|_| |_|\__, |
+#                     __/ |
+#                    |___/
+#
+# Lang configuration file
+# * Formatting: MiniMessage (https://docs.advntr.dev/minimessage/format)
+# * PlaceholderAPI is supported in every message
+# * If you want to avoid a broadcast message, simply replace it with empty: ""
+# Support: https://discord.blakube.com/
+# Documentation: https://docs.blakube.com/bk-tops/intro/introduction/
+
+message:
+  no-permission: "<red>You do not have permission to perform this action."
+  config-reloaded: "<green>Configurations reloaded correctly!"
+
+time-format:
+  day: "d"
+  hour: "h"
+  minute: "m"
+  second: "s"
+  split: " "
+
+invalid-placeholder:
+  format: "Invalid format!"
+  type: "Invalid type!"
+  top-id: "Unknown topId!"
+  position: "Invalid position!"
+  no-data: "-------"
+
+# DO NOT TOUCH THIS!
+config-version: 1

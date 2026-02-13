@@ -1,0 +1,31 @@
+#  _____        _        _
+# |  __ \      | |      | |
+# | |  | | __ _| |_ __ _| |__   __ _ ___  ___
+# | |  | |/ _` | __/ _` | '_ \ / _` / __|/ _ \
+# | |__| | (_| | || (_| | |_) | (_| \__ \  __/
+# |_____/ \__,_|\__\__,_|_.__/ \__,_|___/\___|
+#
+# Database configuration file
+# Support: https://discord.blakube.com/
+# Documentation: https://docs.blakube.com/bk-tops/intro/introduction/
+
+# Available drivers: "h2" (local, recommended) and "mysql" (remote).
+driver: h2
+host: localhost
+port: 3006
+db-name: bktops
+username: tops_user
+password: SECRET_PASSWORD
+
+# Do not touch this if you don't know what are u doing!
+pool:
+  max-pool-size: 10
+  minimum-idle: 2
+  connection-timeout: 30000
+  idle-timeout: 600000
+  max-lifetime: 1800000
+  leak-detection-threshold: 600000
+
+
+# DO NOT TOUCH THIS!
+config-version: 1
