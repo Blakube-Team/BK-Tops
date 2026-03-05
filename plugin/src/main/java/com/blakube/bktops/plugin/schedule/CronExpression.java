@@ -60,10 +60,29 @@ public final class CronExpression {
             int dowVal = zdt.getDayOfWeek().getValue(); // 1=Mon..7=Sun
             dowVal = (dowVal == 7) ? 0 : dowVal; // convert to 0=Sun..6=Sat
 
+            // Cron semantics for Day-of-Month (DOM) and Day-of-Week (DOW):
+            // - If both DOM and DOW are '*': match any day.
+            // - If only one of DOM or DOW is '*': only the other field restricts the match.
+            // - If neither is '*': a match occurs when EITHER field matches (OR).
+            boolean domWildcard = dom.isWildcard();
+            boolean dowWildcard = dow.isWildcard();
+            boolean domMatches = dom.contains(day);
+            boolean dowMatches = dowContains(dowVal);
+            boolean dayOk;
+            if (domWildcard && dowWildcard) {
+                dayOk = true;
+            } else if (domWildcard) {
+                dayOk = dowMatches;
+            } else if (dowWildcard) {
+                dayOk = domMatches;
+            } else {
+                dayOk = domMatches || dowMatches;
+            }
+
             if (minutes.contains(m)
                 && hours.contains(h)
                 && month.contains(mon)
-                && (dom.contains(day) || dowContains(dowVal))) {
+                && dayOk) {
                 return zdt.toInstant();
             }
 
@@ -83,6 +102,7 @@ public final class CronExpression {
         private final Set<Integer> allowed = new TreeSet<>();
         private final int min;
         private final int max;
+        private boolean wildcard;
 
         private Field(int min, int max) {
             this.min = min;
@@ -92,6 +112,7 @@ public final class CronExpression {
         static Field parse(String token, int min, int max) {
             Field f = new Field(min, max);
             if ("*".equals(token)) {
+                f.wildcard = true;
                 for (int i = min; i <= max; i++) f.allowed.add(i);
                 return f;
             }
@@ -141,6 +162,10 @@ public final class CronExpression {
 
         boolean contains(int value) {
             return allowed.contains(value);
+        }
+
+        boolean isWildcard() {
+            return wildcard;
         }
     }
 }
