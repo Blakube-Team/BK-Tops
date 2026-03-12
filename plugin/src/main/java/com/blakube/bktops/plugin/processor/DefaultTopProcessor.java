@@ -12,12 +12,15 @@ import com.blakube.bktops.api.storage.config.TopConfig;
 import com.blakube.bktops.api.top.TopEntry;
 import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
 import com.blakube.bktops.plugin.storage.database.dao.TopStorageDAO;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -86,6 +89,10 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
         for (QueueEntry<K> entry : entries) {
             K identifier = entry.getIdentifier();
 
+            if (shouldBypass(identifier)) {
+                continue;
+            }
+
             String displayName = nameResolver.resolve(identifier);
             if (displayName == null) {
                 resultConsumer.accept(UpdateResult.failure(identifier, "Failed to resolve display name"));
@@ -146,6 +153,10 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
 
     private void processEntry(@NotNull QueueEntry<K> entry) {
         K identifier = entry.getIdentifier();
+
+        if (shouldBypass(identifier)) {
+            return;
+        }
 
         String displayName = nameResolver.resolve(identifier);
         if (displayName == null) {
@@ -211,6 +222,10 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
             return;
         }
 
+        if (shouldBypass(identifier)) {
+            return;
+        }
+
         flushBatch();
 
         QueueEntry<K> entry = new QueueEntry<>(identifier, Priority.CRITICAL, reason);
@@ -229,6 +244,23 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
                 );
             }
         }
+    }
+
+    private boolean shouldBypass(@NotNull K identifier) {
+        if (!(identifier instanceof UUID)) {
+            return false;
+        }
+
+        UUID uuid = (UUID) identifier;
+        Player player = Bukkit.getPlayer(uuid);
+
+        if (player == null) {
+            return false;
+        }
+
+        String permission = "bktops.bypass." + topId;
+
+        return player.hasPermission(permission);
     }
 
     @Override
