@@ -3,6 +3,7 @@ package com.blakube.bktops.api.config;
 public enum ConfigType {
 
     DATABASE("configuration/database.yml", "database.yml", "configuration", true),
+    CONFIG("configuration/config.yml", "config.yml", "configuration", true),
     HOOKS("configuration/hooks.yml", "hooks.yml", "configuration", true),
     TOPS("configuration/tops.yml", "tops.yml", "configuration", false),
     LANG("lang/lang.yml", "lang.yml", "lang", true);

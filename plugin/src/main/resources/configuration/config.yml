@@ -1,0 +1,46 @@
+#   _____             __ _
+#  / ____|           / _(_)
+# | |     ___  _ __ | |_ _  __ _
+# | |    / _ \| '_ \|  _| |/ _` |
+# | |___| (_) | | | | | | | (_| |
+#  \_____\___/|_| |_|_| |_|\__, |
+#                           __/ |
+#                          |___/
+#
+# Main configuration file
+# Support: https://discord.blakube.com/
+# Documentation: https://docs.blakube.com/bk-tops/intro/introduction/
+
+# ========================================
+# NUMBER FORMATTING
+# ========================================
+number-format:
+  # Format mode:
+  # - EXACT: Shows exact number with decimals (1,234,567.89)
+  # - ROUNDED: Rounds to whole number (1,234,568)
+  # - COMPACT: Compact format with decimals (1.23M, 3.45K)
+  # - COMPACT_ROUNDED: Compact format without decimals (1M, 3K)
+  mode: EXACT
+
+  # Thousand separator (only for EXACT and ROUNDED)
+  # Examples: "," → 1,234,567 | "." → 1.234.567 | "" → 1234567
+  thousand-separator: ","
+
+  # Decimal separator (only for EXACT and COMPACT)
+  # Examples: "." → 1.23 | "," → 1,23
+  decimal-separator: "."
+
+  # Number of decimal places (only for EXACT and COMPACT)
+  # Range: 0-12
+  decimal-places: 2
+
+  # Suffixes for COMPACT and COMPACT_ROUNDED formats
+  # You can customize these to your liking (K, M, B, T or mil, millón, etc.)
+  compact-suffixes:
+    thousand: "K"      # 1,000
+    million: "M"       # 1,000,000
+    billion: "B"       # 1,000,000,000
+    trillion: "T"      # 1,000,000,000,000
+
+# DO NOT TOUCH THIS!
+config-version: 1

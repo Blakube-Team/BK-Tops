@@ -2,6 +2,7 @@ package com.blakube.bktops.plugin.hook.placeholder;
 
 import com.blakube.bktops.api.config.ConfigType;
 import com.blakube.bktops.plugin.service.config.ConfigService;
+import com.blakube.bktops.plugin.formatter.NumberFormatter;
 import com.blakube.bktops.plugin.service.time.ObtainTimeService;
 import com.blakube.bktops.plugin.service.time.TimeFormatService;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
@@ -13,10 +14,7 @@ import com.blakube.bktops.api.TopAPIProvider;
 import com.blakube.bktops.api.top.Top;
 import com.blakube.bktops.api.top.TopEntry;
 
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.time.Duration;
-import java.util.Locale;
 import java.util.Optional;
 
 public class PlaceholderAPIHook extends PlaceholderExpansion {
@@ -24,15 +22,12 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
     private final ConfigService configService;
     private final TimeFormatService timeFormatService;
     private final ObtainTimeService obtainTimeService = new ObtainTimeService();
-
-    private static final ThreadLocal<DecimalFormat> FORMATTER = ThreadLocal.withInitial(() -> {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        return new DecimalFormat("0.############", symbols);
-    });
+    private final NumberFormatter numberFormatter;
 
     public PlaceholderAPIHook(ConfigService configService) {
         this.configService = configService;
         this.timeFormatService = new TimeFormatService(configService);
+        this.numberFormatter = new NumberFormatter(configService.provide(ConfigType.CONFIG));
     }
 
     @Override
@@ -76,7 +71,6 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
             return until.map(timeFormatService::formatTwoUnits)
                     .orElseGet(() -> configService.provide(ConfigType.LANG)
                             .getString("invalid-placeholder.top-id", "Unknown topId!"));
-
         }
 
         String[] parts = identifier.split("_");
@@ -86,6 +80,20 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         }
 
         String typeStr = parts[0];
+
+        NumberFormatter.FormatMode formatOverride = null;
+        if (typeStr.contains(":")) {
+            String[] typeParts = typeStr.split(":");
+            typeStr = typeParts[0];
+
+            if (typeParts.length > 1) {
+                try {
+                    formatOverride = NumberFormatter.FormatMode.valueOf(typeParts[1].toUpperCase());
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+
         String posStr = parts[parts.length - 1];
 
         StringBuilder topIdBuilder = new StringBuilder();
@@ -116,7 +124,7 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 
         Optional<? extends TopEntry<?>> entryOpt = top.getEntry(position);
         if (entryOpt.isEmpty()) {
-            return configService.provide(ConfigType.LANG).getString("invalid-placeholder.no-data", "------");
+            return configService.provide(ConfigType.LANG).getString("invalid-placeholder.no-data", "-------");
         }
 
         TopEntry<?> entry = entryOpt.get();
@@ -124,7 +132,11 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         if (typeStr.equals("name")) {
             return entry.getDisplayName();
         } else {
-            return FORMATTER.get().format(entry.getValue());
+            return numberFormatter.format(entry.getValue(), formatOverride);
         }
+    }
+
+    public void reload() {
+        numberFormatter.reload();
     }
 }

@@ -34,6 +34,7 @@ public class ConfigService {
 
         provide(ConfigType.DATABASE);
         provide(ConfigType.LANG);
+        provide(ConfigType.CONFIG);
         provide(ConfigType.HOOKS);
         provide(ConfigType.TOPS);
     }
@@ -153,6 +154,7 @@ public class ConfigService {
 
         reload(ConfigType.DATABASE);
         reload(ConfigType.LANG);
+        reload(ConfigType.CONFIG);
         reload(ConfigType.HOOKS);
         reload(ConfigType.TOPS);
     }

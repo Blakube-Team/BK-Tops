@@ -37,6 +37,7 @@ public class BKTops extends JavaPlugin {
     private ProcessorScheduler scheduler;
     private MessageParser messageManager;
     private MessageRepository messageRepository;
+    private PlaceholderAPIHook placeholderAPIHook;
     private NotifyService  notifyService;
     private TopAPI api;
     private TeamHandler teamManager;
@@ -104,7 +105,8 @@ public class BKTops extends JavaPlugin {
 
         try {
             if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
-                new PlaceholderAPIHook(configService).register();
+                placeholderAPIHook = new PlaceholderAPIHook(configService);
+                placeholderAPIHook.register();
                 getLogger().info("PlaceholderAPI detected: BK-Tops placeholders registered.");
             }
         } catch (Throwable t) {
@@ -171,7 +173,8 @@ public class BKTops extends JavaPlugin {
         }
 
         configService.reloadAll();
-        
+        placeholderAPIHook.reload();
+
         DatabaseConnection.close();
         setUpStorage();
 
