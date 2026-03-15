@@ -105,15 +105,19 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         }
         String topId = topIdBuilder.toString();
 
-        if (!typeStr.equals("name") && !typeStr.equals("value")) {
-            return configService.provide(ConfigType.LANG).getString("invalid-placeholder.type", "Invalid type!");
-        }
-
         int position;
         try {
             position = Integer.parseInt(posStr);
         } catch (NumberFormatException e) {
             return configService.provide(ConfigType.LANG).getString("invalid-placeholder.position", "Invalid position!");
+        }
+
+        if (typeStr.equals("spaced")) {
+            return handleSpacedPlaceholder(topId, position);
+        }
+
+        if (!typeStr.equals("name") && !typeStr.equals("value")) {
+            return configService.provide(ConfigType.LANG).getString("invalid-placeholder.type", "Invalid type!");
         }
 
         TopAPI api = TopAPIProvider.getInstance();
@@ -134,6 +138,50 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         } else {
             return numberFormatter.format(entry.getValue(), formatOverride);
         }
+    }
+
+    private String handleSpacedPlaceholder(@NotNull String topId, int position) {
+        TopAPI api = TopAPIProvider.getInstance();
+        Top<?> top = api.getTop(topId);
+
+        if (top == null) {
+            return "";
+        }
+
+        Optional<? extends TopEntry<?>> entryOpt = top.getEntry(position);
+        if (entryOpt.isEmpty()) {
+            return "";
+        }
+
+        TopEntry<?> entry = entryOpt.get();
+
+        String fillChar = configService.provide(ConfigType.CONFIG).getString("spaced.char", "-");
+        int maxLength = configService.provide(ConfigType.CONFIG).getInt("spaced.length", 40);
+
+        String displayName = entry.getDisplayName();
+        String formattedValue = numberFormatter.format(entry.getValue());
+
+        String cleanName = stripMinecraftColors(displayName);
+
+        int nameLength = cleanName.length();
+        int valueLength = formattedValue.length();
+        int totalContentLength = nameLength + valueLength;
+
+        int spacesNeeded = maxLength - totalContentLength;
+
+        if (spacesNeeded < 1) {
+            spacesNeeded = 1;
+        }
+
+        return fillChar.repeat(spacesNeeded) + " ";
+    }
+
+    private String stripMinecraftColors(@NotNull String text) {
+        String result = text.replaceAll("[&§][0-9a-fk-or]", "");
+        result = result.replaceAll("[&§]x([&§][0-9a-f]){6}", "");
+        result = result.replaceAll("<[^>]+>", "");
+
+        return result;
     }
 
     public void reload() {
