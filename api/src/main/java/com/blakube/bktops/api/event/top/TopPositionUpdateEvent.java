@@ -20,6 +20,8 @@ public class TopPositionUpdateEvent extends Event {
     private final Double newValue;
     private final Integer oldPosition;
     private final Integer newPosition;
+    private final String formattedOldValue;
+    private final String formattedNewValue;
 
     public TopPositionUpdateEvent(boolean async,
                                   @NotNull String topId,
@@ -28,7 +30,9 @@ public class TopPositionUpdateEvent extends Event {
                                   @Nullable Double oldValue,
                                   @Nullable Double newValue,
                                   @Nullable Integer oldPosition,
-                                  @Nullable Integer newPosition) {
+                                  @Nullable Integer newPosition,
+                                  @Nullable String formattedOldValue,
+                                  @Nullable String formattedNewValue) {
         super(async);
         this.topId = topId;
         this.identifier = identifier;
@@ -37,6 +41,8 @@ public class TopPositionUpdateEvent extends Event {
         this.newValue = newValue;
         this.oldPosition = oldPosition;
         this.newPosition = newPosition;
+        this.formattedOldValue = formattedOldValue;
+        this.formattedNewValue = formattedNewValue;
     }
 
     @NotNull
@@ -59,6 +65,12 @@ public class TopPositionUpdateEvent extends Event {
 
     @Nullable
     public Integer getNewPosition() { return newPosition; }
+
+    @Nullable
+    public String getFormattedOldValue() { return formattedOldValue; }
+
+    @Nullable
+    public String getFormattedNewValue() { return formattedNewValue; }
 
     @Override
     public @NotNull HandlerList getHandlers() {

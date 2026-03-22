@@ -34,10 +34,10 @@ public class DefaultTop<K> implements Top<K> {
     protected final TopEntryCache<K> cache;
 
     public DefaultTop(@NotNull String id,
-                     @NotNull TopConfig config,
-                     @NotNull ValueProvider<K> valueProvider,
-                     @NotNull NameResolver<K> nameResolver,
-                     @NotNull TopStorage<K> storage) {
+                      @NotNull TopConfig config,
+                      @NotNull ValueProvider<K> valueProvider,
+                      @NotNull NameResolver<K> nameResolver,
+                      @NotNull TopStorage<K> storage) {
         this.id = Objects.requireNonNull(id, "id cannot be null");
         this.config = Objects.requireNonNull(config, "config cannot be null");
         this.valueProvider = Objects.requireNonNull(valueProvider, "valueProvider cannot be null");
@@ -47,13 +47,13 @@ public class DefaultTop<K> implements Top<K> {
         this.cache = new TopEntryCache<>();
 
         this.processor = new DefaultTopProcessor<>(
-            id,
-            config,
-            valueProvider,
-            nameResolver,
-            storage,
-            queue,
-            this::onUpdateResult
+                id,
+                config,
+                valueProvider,
+                nameResolver,
+                storage,
+                queue,
+                this::onUpdateResult
         );
 
         asyncLoadFromStorage();
@@ -61,23 +61,41 @@ public class DefaultTop<K> implements Top<K> {
 
     protected void asyncLoadFromStorage() {
         CompletableFuture
-            .supplyAsync(() -> storage.load(id), DatabaseExecutors.DB_EXECUTOR)
-            .thenAccept(cache::setEntries)
-            .exceptionally(ex -> {
-                ex.printStackTrace();
-                return null;
-            });
+                .supplyAsync(() -> storage.load(id), DatabaseExecutors.DB_EXECUTOR)
+                .thenAccept(cache::setEntries)
+                .exceptionally(ex -> {
+                    ex.printStackTrace();
+                    return null;
+                });
     }
 
     protected void onUpdateResult(@NotNull UpdateResult<K> result) {
         if (result.isSuccess()) {
-            // Fire event if relevant changes happened
+            refresh();
+
             boolean changed = result.hasPositionChanged() || result.isEnteredTop() || result.isLeftTop() || result.hasValueChanged();
             if (changed) {
                 String displayName = null;
                 try {
                     displayName = nameResolver.resolve(result.getIdentifier());
                 } catch (Exception ignored) {}
+
+                String formattedOldValue = null;
+                String formattedNewValue = null;
+
+                if (com.blakube.bktops.plugin.formatter.NumberFormatterProvider.isAvailable()) {
+                    com.blakube.bktops.plugin.formatter.NumberFormatter formatter =
+                            com.blakube.bktops.plugin.formatter.NumberFormatterProvider.getInstance();
+
+                    if (result.getOldValue() != null) {
+                        formattedOldValue = formatter.format(result.getOldValue());
+                    }
+
+                    if (result.getNewValue() != null) {
+                        formattedNewValue = formatter.format(result.getNewValue());
+                    }
+                }
+
                 TopEventDispatcher.firePositionUpdate(
                         id,
                         result.getIdentifier(),
@@ -85,10 +103,11 @@ public class DefaultTop<K> implements Top<K> {
                         result.getOldValue(),
                         result.getNewValue(),
                         result.getOldPosition(),
-                        result.getNewPosition()
+                        result.getNewPosition(),
+                        formattedOldValue,
+                        formattedNewValue
                 );
             }
-            refresh();
         }
     }
 
@@ -159,8 +178,8 @@ public class DefaultTop<K> implements Top<K> {
 
     @Override
     public void enqueue(@NotNull Collection<K> identifiers,
-                       @NotNull Priority priority,
-                       @NotNull String reason) {
+                        @NotNull Priority priority,
+                        @NotNull String reason) {
         Objects.requireNonNull(identifiers, "identifiers cannot be null");
         Objects.requireNonNull(priority, "priority cannot be null");
         Objects.requireNonNull(reason, "reason cannot be null");

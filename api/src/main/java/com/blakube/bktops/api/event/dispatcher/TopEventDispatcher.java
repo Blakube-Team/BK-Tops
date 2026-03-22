@@ -20,10 +20,13 @@ public final class TopEventDispatcher {
                                           @Nullable Double oldValue,
                                           @Nullable Double newValue,
                                           @Nullable Integer oldPosition,
-                                          @Nullable Integer newPosition) {
+                                          @Nullable Integer newPosition,
+                                          @Nullable String formattedOldValue,
+                                          @Nullable String formattedNewValue) {
         boolean async = !Bukkit.isPrimaryThread();
         TopPositionUpdateEvent event = new TopPositionUpdateEvent(
-                async, topId, identifier, displayName, oldValue, newValue, oldPosition, newPosition
+                async, topId, identifier, displayName, oldValue, newValue, oldPosition, newPosition,
+                formattedOldValue, formattedNewValue
         );
         Bukkit.getPluginManager().callEvent(event);
     }

@@ -8,6 +8,8 @@ import com.blakube.bktops.api.config.ConfigContainer;
 import com.blakube.bktops.api.registry.TopRegistry;
 import com.blakube.bktops.plugin.command.BKTopsCommand;
 import com.blakube.bktops.plugin.command.exception.ExceptionHandler;
+import com.blakube.bktops.plugin.formatter.NumberFormatter;
+import com.blakube.bktops.plugin.formatter.NumberFormatterProvider;
 import com.blakube.bktops.plugin.hook.metrics.Metrics;
 import com.blakube.bktops.plugin.hook.placeholder.PlaceholderAPIHook;
 import com.blakube.bktops.plugin.listener.PlayerJoinListener;
@@ -50,6 +52,7 @@ public class BKTops extends JavaPlugin {
 
         setUpConfig();
         setUpStorage();
+        initNumberFormatter();
         initTops();
         initServices();
         initApi();
@@ -77,6 +80,8 @@ public class BKTops extends JavaPlugin {
 
         DatabaseConnection.close();
 
+        NumberFormatterProvider.unload();
+
         getLogger().info("BK-Tops disabled.");
     }
 
@@ -86,6 +91,12 @@ public class BKTops extends JavaPlugin {
 
     private void setUpStorage() {
         DatabaseConnection.init(this, configService.provide(ConfigType.DATABASE));
+    }
+
+    private void initNumberFormatter() {
+        NumberFormatter formatter = new NumberFormatter(configService.provide(ConfigType.CONFIG));
+        NumberFormatterProvider.setInstance(formatter);
+        getLogger().info("NumberFormatter initialized with mode: " + configService.provide(ConfigType.CONFIG).getString("number-format.mode", "EXACT"));
     }
 
     private void initApi() {
@@ -173,6 +184,11 @@ public class BKTops extends JavaPlugin {
         }
 
         configService.reloadAll();
+
+        if (NumberFormatterProvider.isAvailable()) {
+            NumberFormatterProvider.getInstance().reload();
+        }
+
         placeholderAPIHook.reload();
 
         DatabaseConnection.close();
