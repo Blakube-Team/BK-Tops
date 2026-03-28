@@ -16,6 +16,7 @@ import com.blakube.bktops.api.top.TopEntry;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.UUID;
 
 public class PlaceholderAPIHook extends PlaceholderExpansion {
 
@@ -72,6 +73,12 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
                     .orElseGet(() -> configService.provide(ConfigType.LANG)
                             .getString("invalid-placeholder.top-id", "Unknown topId!"));
         }
+
+        if (identifier.startsWith("myposition_")) {
+            String topId = identifier.substring("myposition_".length());
+            return handleMyPositionPlaceholder(player, topId);
+        }
+
 
         String[] parts = identifier.split("_");
 
@@ -182,6 +189,27 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         result = result.replaceAll("<[^>]+>", "");
 
         return result;
+    }
+
+    private String handleMyPositionPlaceholder(@NotNull Player player, @NotNull String topId) {
+        TopAPI api = TopAPIProvider.getInstance();
+        Top<?> top = api.getTop(topId);
+
+        if (top == null) {
+            return configService.provide(ConfigType.LANG)
+                    .getString("invalid-placeholder.top-id", "Unknown topId!");
+        }
+
+        @SuppressWarnings("unchecked")
+        Top<UUID> uuidTop = (Top<UUID>) top;
+        int position = uuidTop.getPosition(player.getUniqueId());
+
+        if (position == -1) {
+            return configService.provide(ConfigType.LANG)
+                    .getString("position.not-in-top", "You are not in the top!");
+        }
+
+        return String.valueOf(position);
     }
 
     public void reload() {

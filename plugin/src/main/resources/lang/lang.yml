@@ -27,6 +27,9 @@ time-format:
   second: "s"
   split: " "
 
+position:
+  not-in-top: "<red>You are not in the top!"
+
 invalid-placeholder:
   format: "Invalid format!"
   type: "Invalid type!"
@@ -35,4 +38,4 @@ invalid-placeholder:
   no-data: "-------"
 
 # DO NOT TOUCH THIS!
-config-version: 2
+config-version: 3
