@@ -3,11 +3,13 @@ package com.blakube.bktops.plugin.hook.placeholder;
 import com.blakube.bktops.api.config.ConfigType;
 import com.blakube.bktops.plugin.service.config.ConfigService;
 import com.blakube.bktops.plugin.formatter.NumberFormatter;
+import com.blakube.bktops.plugin.formatter.NumberFormatterProvider;
 import com.blakube.bktops.plugin.service.time.ObtainTimeService;
 import com.blakube.bktops.plugin.service.time.TimeFormatService;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import com.blakube.bktops.api.TopAPI;
 import com.blakube.bktops.api.TopAPIProvider;
@@ -23,12 +25,10 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
     private final ConfigService configService;
     private final TimeFormatService timeFormatService;
     private final ObtainTimeService obtainTimeService = new ObtainTimeService();
-    private final NumberFormatter numberFormatter;
 
     public PlaceholderAPIHook(ConfigService configService) {
         this.configService = configService;
         this.timeFormatService = new TimeFormatService(configService);
-        this.numberFormatter = new NumberFormatter(configService.provide(ConfigType.CONFIG));
     }
 
     @Override
@@ -79,6 +79,30 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
             return handleMyPositionPlaceholder(player, topId);
         }
 
+        if (identifier.startsWith("displayname_")) {
+            String topId = identifier.substring("displayname_".length());
+            return handleDisplayNamePlaceholder(topId);
+        }
+
+        if (identifier.startsWith("distance_above_")) {
+            String topId = identifier.substring("distance_above_".length());
+            return handleDistanceAbovePlaceholder(player, topId);
+        }
+
+        if (identifier.startsWith("distance_below_")) {
+            String topId = identifier.substring("distance_below_".length());
+            return handleDistanceBelowPlaceholder(player, topId);
+        }
+
+        if (identifier.startsWith("above_name_")) {
+            String topId = identifier.substring("above_name_".length());
+            return handleAboveNamePlaceholder(player, topId);
+        }
+
+        if (identifier.startsWith("below_name_")) {
+            String topId = identifier.substring("below_name_".length());
+            return handleBelowNamePlaceholder(player, topId);
+        }
 
         String[] parts = identifier.split("_");
 
@@ -143,7 +167,7 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         if (typeStr.equals("name")) {
             return entry.getDisplayName();
         } else {
-            return numberFormatter.format(entry.getValue(), formatOverride);
+            return NumberFormatterProvider.getInstance().format(entry.getValue(), formatOverride);
         }
     }
 
@@ -166,7 +190,7 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         int maxLength = configService.provide(ConfigType.CONFIG).getInt("spaced.length", 40);
 
         String displayName = entry.getDisplayName();
-        String formattedValue = numberFormatter.format(entry.getValue());
+        String formattedValue = NumberFormatterProvider.getInstance().format(entry.getValue());
 
         String cleanName = stripMinecraftColors(displayName);
 
@@ -191,6 +215,99 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         return result;
     }
 
+    private String handleDisplayNamePlaceholder(@NotNull String topId) {
+        TopAPI api = TopAPIProvider.getInstance();
+        Top<?> top = api.getTop(topId);
+
+        if (top == null) {
+            return configService.provide(ConfigType.LANG)
+                    .getString("invalid-placeholder.top-id", "Unknown topId!");
+        }
+
+        String displayName = top.getConfig().getDisplayName();
+        if (displayName == null || displayName.isEmpty()) {
+            return topId;
+        }
+
+        return displayName;
+    }
+
+    private String handleDistanceAbovePlaceholder(@Nullable Player player, @NotNull String topId) {
+        if (player == null) return notInTop();
+
+        TopAPI api = TopAPIProvider.getInstance();
+        Top<?> top = api.getTop(topId);
+        if (top == null) return configService.provide(ConfigType.LANG).getString("invalid-placeholder.top-id", "Unknown topId!");
+
+        @SuppressWarnings("unchecked") Top<UUID> uuidTop = (Top<UUID>) top;
+        int myPos = uuidTop.getPosition(player.getUniqueId());
+        if (myPos == -1) return notInTop();
+        if (myPos == 1)  return configService.provide(ConfigType.LANG).getString("position.no-neighbor-above", "---");
+
+        Optional<? extends TopEntry<?>> above = top.getEntry(myPos - 1);
+        Optional<? extends TopEntry<?>> mine  = top.getEntry(myPos);
+        if (above.isEmpty() || mine.isEmpty()) return configService.provide(ConfigType.LANG).getString("position.no-neighbor-above", "---");
+
+        double distance = above.get().getValue() - mine.get().getValue();
+        return NumberFormatterProvider.getInstance().format(distance);
+    }
+
+    private String handleDistanceBelowPlaceholder(@Nullable Player player, @NotNull String topId) {
+        if (player == null) return notInTop();
+
+        TopAPI api = TopAPIProvider.getInstance();
+        Top<?> top = api.getTop(topId);
+        if (top == null) return configService.provide(ConfigType.LANG).getString("invalid-placeholder.top-id", "Unknown topId!");
+
+        @SuppressWarnings("unchecked") Top<UUID> uuidTop = (Top<UUID>) top;
+        int myPos = uuidTop.getPosition(player.getUniqueId());
+        if (myPos == -1) return notInTop();
+
+        Optional<? extends TopEntry<?>> below = top.getEntry(myPos + 1);
+        Optional<? extends TopEntry<?>> mine  = top.getEntry(myPos);
+        if (below.isEmpty() || mine.isEmpty()) return configService.provide(ConfigType.LANG).getString("position.no-neighbor-below", "---");
+
+        double distance = mine.get().getValue() - below.get().getValue();
+        return NumberFormatterProvider.getInstance().format(distance);
+    }
+
+    private String handleAboveNamePlaceholder(@Nullable Player player, @NotNull String topId) {
+        if (player == null) return notInTop();
+
+        TopAPI api = TopAPIProvider.getInstance();
+        Top<?> top = api.getTop(topId);
+        if (top == null) return configService.provide(ConfigType.LANG).getString("invalid-placeholder.top-id", "Unknown topId!");
+
+        @SuppressWarnings("unchecked") Top<UUID> uuidTop = (Top<UUID>) top;
+        int myPos = uuidTop.getPosition(player.getUniqueId());
+        if (myPos == -1) return notInTop();
+        if (myPos == 1)  return configService.provide(ConfigType.LANG).getString("position.no-neighbor-above", "---");
+
+        return top.getEntry(myPos - 1)
+                .map(TopEntry::getDisplayName)
+                .orElseGet(() -> configService.provide(ConfigType.LANG).getString("position.no-neighbor-above", "---"));
+    }
+
+    private String handleBelowNamePlaceholder(@Nullable Player player, @NotNull String topId) {
+        if (player == null) return notInTop();
+
+        TopAPI api = TopAPIProvider.getInstance();
+        Top<?> top = api.getTop(topId);
+        if (top == null) return configService.provide(ConfigType.LANG).getString("invalid-placeholder.top-id", "Unknown topId!");
+
+        @SuppressWarnings("unchecked") Top<UUID> uuidTop = (Top<UUID>) top;
+        int myPos = uuidTop.getPosition(player.getUniqueId());
+        if (myPos == -1) return notInTop();
+
+        return top.getEntry(myPos + 1)
+                .map(TopEntry::getDisplayName)
+                .orElseGet(() -> configService.provide(ConfigType.LANG).getString("position.no-neighbor-below", "---"));
+    }
+
+    private String notInTop() {
+        return configService.provide(ConfigType.LANG).getString("position.not-in-top", "N/A");
+    }
+
     private String handleMyPositionPlaceholder(@NotNull Player player, @NotNull String topId) {
         TopAPI api = TopAPIProvider.getInstance();
         Top<?> top = api.getTop(topId);
@@ -213,6 +330,5 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
     }
 
     public void reload() {
-        numberFormatter.reload();
     }
 }

@@ -29,6 +29,8 @@ time-format:
 
 position:
   not-in-top: "<red>You are not in the top!"
+  no-neighbor-above: "---"
+  no-neighbor-below: "---"
 
 invalid-placeholder:
   format: "Invalid format!"
@@ -38,4 +40,4 @@ invalid-placeholder:
   no-data: "-------"
 
 # DO NOT TOUCH THIS!
-config-version: 3
+config-version: 4

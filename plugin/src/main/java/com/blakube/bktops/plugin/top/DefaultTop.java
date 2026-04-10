@@ -11,15 +11,16 @@ import com.blakube.bktops.api.storage.TopStorage;
 import com.blakube.bktops.api.storage.config.TopConfig;
 import com.blakube.bktops.api.top.Top;
 import com.blakube.bktops.api.top.TopEntry;
+import com.blakube.bktops.plugin.formatter.NumberFormatter;
+import com.blakube.bktops.plugin.formatter.NumberFormatterProvider;
 import com.blakube.bktops.plugin.processor.DefaultTopProcessor;
 import com.blakube.bktops.plugin.queue.PriorityProcessingQueue;
+import com.blakube.bktops.plugin.storage.cache.TopEntryCache;
+import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-
-import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
-import com.blakube.bktops.plugin.storage.cache.TopEntryCache;
 
 public class DefaultTop<K> implements Top<K> {
 
@@ -30,7 +31,6 @@ public class DefaultTop<K> implements Top<K> {
     protected final TopStorage<K> storage;
     protected final ProcessingQueue<K> queue;
     protected final TopProcessor<K> processor;
-
     protected final TopEntryCache<K> cache;
 
     public DefaultTop(@NotNull String id,
@@ -38,13 +38,13 @@ public class DefaultTop<K> implements Top<K> {
                       @NotNull ValueProvider<K> valueProvider,
                       @NotNull NameResolver<K> nameResolver,
                       @NotNull TopStorage<K> storage) {
-        this.id = Objects.requireNonNull(id, "id cannot be null");
-        this.config = Objects.requireNonNull(config, "config cannot be null");
+        this.id          = Objects.requireNonNull(id,          "id cannot be null");
+        this.config      = Objects.requireNonNull(config,      "config cannot be null");
         this.valueProvider = Objects.requireNonNull(valueProvider, "valueProvider cannot be null");
-        this.nameResolver = Objects.requireNonNull(nameResolver, "nameResolver cannot be null");
-        this.storage = Objects.requireNonNull(storage, "storage cannot be null");
-        this.queue = new PriorityProcessingQueue<>();
-        this.cache = new TopEntryCache<>();
+        this.nameResolver  = Objects.requireNonNull(nameResolver,  "nameResolver cannot be null");
+        this.storage     = Objects.requireNonNull(storage,     "storage cannot be null");
+        this.queue       = new PriorityProcessingQueue<>();
+        this.cache       = new TopEntryCache<>();
 
         this.processor = new DefaultTopProcessor<>(
                 id,
@@ -53,7 +53,8 @@ public class DefaultTop<K> implements Top<K> {
                 nameResolver,
                 storage,
                 queue,
-                this::onUpdateResult
+                this::onUpdateResult,
+                this::removeFromTop
         );
 
         asyncLoadFromStorage();
@@ -61,118 +62,88 @@ public class DefaultTop<K> implements Top<K> {
 
     protected void asyncLoadFromStorage() {
         CompletableFuture
-                .supplyAsync(() -> storage.load(id), DatabaseExecutors.DB_EXECUTOR)
+                .supplyAsync(() -> storage.load(id, config.getSize()), DatabaseExecutors.DB_EXECUTOR)
                 .thenAccept(cache::setEntries)
-                .exceptionally(ex -> {
-                    ex.printStackTrace();
-                    return null;
-                });
+                .exceptionally(ex -> { ex.printStackTrace(); return null; });
     }
 
     protected void onUpdateResult(@NotNull UpdateResult<K> result) {
-        if (result.isSuccess()) {
-            refresh();
+        if (!result.isSuccess() || result.getNewValue() == null) return;
+        if (result.getNewValue() == 0.0) return;
 
-            boolean changed = result.hasPositionChanged() || result.isEnteredTop() || result.isLeftTop() || result.hasValueChanged();
-            if (changed) {
-                String displayName = null;
-                try {
-                    displayName = nameResolver.resolve(result.getIdentifier());
-                } catch (Exception ignored) {}
+        K identifier = result.getIdentifier();
 
-                String formattedOldValue = null;
-                String formattedNewValue = null;
+        Optional<TopEntry<K>> oldEntry  = cache.getEntryByIdentifier(identifier);
+        Double                oldValue  = oldEntry.map(TopEntry::getValue).orElse(null);
+        Integer               oldPosition = oldEntry.map(TopEntry::getPosition).orElse(null);
 
-                if (com.blakube.bktops.plugin.formatter.NumberFormatterProvider.isAvailable()) {
-                    com.blakube.bktops.plugin.formatter.NumberFormatter formatter =
-                            com.blakube.bktops.plugin.formatter.NumberFormatterProvider.getInstance();
+        String displayName = result.getDisplayName() != null
+                ? result.getDisplayName()
+                : oldEntry.map(TopEntry::getDisplayName).orElse(null);
 
-                    if (result.getOldValue() != null) {
-                        formattedOldValue = formatter.format(result.getOldValue());
-                    }
+        if (displayName == null) return;
 
-                    if (result.getNewValue() != null) {
-                        formattedNewValue = formatter.format(result.getNewValue());
-                    }
-                }
+        int newPositionRaw = cache.updateEntry(identifier, displayName, result.getNewValue(), config.getSize());
+        Integer newPosition = newPositionRaw == -1 ? null : newPositionRaw;
 
-                TopEventDispatcher.firePositionUpdate(
-                        id,
-                        result.getIdentifier(),
-                        displayName,
-                        result.getOldValue(),
-                        result.getNewValue(),
-                        result.getOldPosition(),
-                        result.getNewPosition(),
-                        formattedOldValue,
-                        formattedNewValue
-                );
-            }
+        if (oldPosition == null && newPosition == null) return;
+
+        boolean changed = !Objects.equals(oldValue, result.getNewValue())
+                       || !Objects.equals(oldPosition, newPosition);
+
+        if (!changed) return;
+
+        String formattedOldValue = null;
+        String formattedNewValue = null;
+
+        if (NumberFormatterProvider.isAvailable()) {
+            NumberFormatter formatter = NumberFormatterProvider.getInstance();
+            if (oldValue != null)             formattedOldValue = formatter.format(oldValue);
+            if (result.getNewValue() != null) formattedNewValue = formatter.format(result.getNewValue());
         }
+
+        TopEventDispatcher.firePositionUpdate(
+                id,
+                identifier,
+                displayName,
+                oldValue,
+                result.getNewValue(),
+                oldPosition,
+                newPosition,
+                formattedOldValue,
+                formattedNewValue
+        );
     }
 
-    @Override
-    @NotNull
-    public String getId() {
-        return id;
-    }
+    @Override @NotNull public String getId()       { return id; }
+    @Override @NotNull public TopConfig getConfig() { return config; }
 
-    @Override
-    @NotNull
-    public TopConfig getConfig() {
-        return config;
-    }
+    @Override @NotNull
+    public List<TopEntry<K>> getEntries() { return cache.getEntriesCopy(); }
 
-    @Override
-    @NotNull
-    public List<TopEntry<K>> getEntries() {
-        return cache.getEntriesCopy();
-    }
-
-    @Override
-    @NotNull
+    @Override @NotNull
     public Optional<TopEntry<K>> getEntry(int position) {
-        if (position < 1) {
-            return Optional.empty();
-        }
-
+        if (position < 1) return Optional.empty();
         return cache.getEntryAt(position);
     }
 
     @Override
     public int getPosition(@NotNull K identifier) {
         Objects.requireNonNull(identifier, "identifier cannot be null");
-
         return cache.getPosition(identifier);
     }
 
     @Override
-    public boolean isInTop(@NotNull K identifier) {
-        return getPosition(identifier) != -1;
-    }
+    public boolean isInTop(@NotNull K identifier) { return getPosition(identifier) != -1; }
 
-    @Override
-    @NotNull
-    public Optional<Double> getMinValue() {
-        return cache.getMinValue();
-    }
-
-    @Override
-    @NotNull
-    public Optional<Double> getMaxValue() {
-        return cache.getMaxValue();
-    }
-
-    @Override
-    public int getCurrentSize() {
-        return cache.size();
-    }
+    @Override @NotNull public Optional<Double> getMinValue() { return cache.getMinValue(); }
+    @Override @NotNull public Optional<Double> getMaxValue() { return cache.getMaxValue(); }
+    @Override public int getCurrentSize()                    { return cache.size(); }
 
     @Override
     public void markDirty(@NotNull K identifier, @NotNull String reason) {
         Objects.requireNonNull(identifier, "identifier cannot be null");
-        Objects.requireNonNull(reason, "reason cannot be null");
-
+        Objects.requireNonNull(reason,     "reason cannot be null");
         queue.enqueue(identifier, Priority.CRITICAL, reason);
     }
 
@@ -181,28 +152,18 @@ public class DefaultTop<K> implements Top<K> {
                         @NotNull Priority priority,
                         @NotNull String reason) {
         Objects.requireNonNull(identifiers, "identifiers cannot be null");
-        Objects.requireNonNull(priority, "priority cannot be null");
-        Objects.requireNonNull(reason, "reason cannot be null");
-
+        Objects.requireNonNull(priority,    "priority cannot be null");
+        Objects.requireNonNull(reason,      "reason cannot be null");
         queue.enqueueAll(identifiers, priority, reason);
     }
 
-    @Override
-    @NotNull
-    public ValueProvider<K> getValueProvider() {
-        return valueProvider;
-    }
+    @Override @NotNull public ValueProvider<K>    getValueProvider() { return valueProvider; }
+    @Override @NotNull public ProcessingQueue<K>  getQueue()         { return queue; }
+    @Override @NotNull public TopProcessor<K>     getProcessor()     { return processor; }
 
-    @Override
-    @NotNull
-    public ProcessingQueue<K> getQueue() {
-        return queue;
-    }
-
-    @Override
-    @NotNull
-    public TopProcessor<K> getProcessor() {
-        return processor;
+    protected void removeFromTop(@NotNull K identifier) {
+        cache.removeEntry(identifier);
+        CompletableFuture.runAsync(() -> storage.remove(id, identifier), DatabaseExecutors.DB_EXECUTOR);
     }
 
     @Override
@@ -219,10 +180,7 @@ public class DefaultTop<K> implements Top<K> {
 
     @Override
     public String toString() {
-        return "DefaultTop{" +
-                "id='" + id + '\'' +
-                ", size=" + getCurrentSize() + "/" + config.getSize() +
-                ", queueSize=" + queue.size() +
-                '}';
+        return "DefaultTop{id='" + id + "', size=" + getCurrentSize() + "/" + config.getSize()
+                + ", queue=" + queue.size() + '}';
     }
 }

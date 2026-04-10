@@ -25,7 +25,7 @@ public class PlayerJoinListener implements Listener {
         UUID uuid = player.getUniqueId();
 
         for (Top<UUID> top : registry.getAll()) {
-            top.enqueue(List.of(uuid), Priority.CRITICAL, "player_join");
+            top.enqueue(List.of(uuid), Priority.HIGH, "player_join");
         }
     }
 }

@@ -34,36 +34,26 @@ public final class TopStorageImpl<K> implements TopStorage<K> {
     }
 
     @Override
+    @NotNull
+    public List<TopEntry<K>> load(@NotNull String topId, int limit) {
+        return dao.loadAllWithLimit(limit);
+    }
+
+    @Override
     public boolean save(@NotNull String topId,
                         @NotNull K identifier,
                         @NotNull String displayName,
                         double value,
                         int maxSize) {
-
-        int currentSize = dao.getSize();
-
-        if (currentSize >= maxSize) {
-            Double minValue = dao.getMinValue();
-            if (minValue != null && value <= minValue && !dao.exists(identifier)) {
-                return false;
-            }
-        }
-
-        boolean saved = dao.save(identifier, displayName, value);
-
-        if (saved && dao.getSize() > maxSize) {
-            dao.removeLowest();
-        }
-
-        return saved;
+        dao.saveAndTrim(identifier, displayName, value, maxSize);
+        return true;
     }
 
     @Override
     public void saveBatch(@NotNull String topId,
                           @NotNull List<TopEntry<K>> entries,
                           int maxSize) {
-        List<TopStorageDAO.BatchEntry<K>> batchEntries = new ArrayList<>();
-
+        List<TopStorageDAO.BatchEntry<K>> batchEntries = new ArrayList<>(entries.size());
         for (TopEntry<K> entry : entries) {
             batchEntries.add(new TopStorageDAO.BatchEntry<>(
                     entry.getIdentifier(),
@@ -71,16 +61,11 @@ public final class TopStorageImpl<K> implements TopStorage<K> {
                     entry.getValue()
             ));
         }
-
-        dao.saveBatch(batchEntries);
-
-        while (dao.getSize() > maxSize) {
-            dao.removeLowest();
-        }
+        dao.saveBatchAndTrim(batchEntries, maxSize);
     }
 
-    public void saveBatch(@NotNull List<TopStorageDAO.BatchEntry<K>> entries) {
-        dao.saveBatch(entries);
+    public void saveBatch(@NotNull List<TopStorageDAO.BatchEntry<K>> entries, int maxSize) {
+        dao.saveBatchAndTrim(entries, maxSize);
     }
 
     @Override

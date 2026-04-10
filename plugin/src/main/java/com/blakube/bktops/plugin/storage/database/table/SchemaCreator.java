@@ -149,44 +149,24 @@ public final class SchemaCreator {
     }
 
     public static void truncateTopTable(@NotNull String topId) {
-        String tableName = getTopTableName(topId);
-
-        try (Connection conn = DatabaseConnection.getConnection();
-             Statement stmt = conn.createStatement()) {
-
-            stmt.executeUpdate("TRUNCATE TABLE " + tableName);
-
-        } catch (SQLException e) {
-            try (Connection conn = DatabaseConnection.getConnection();
-                 Statement stmt = conn.createStatement()) {
-
-                stmt.executeUpdate("DELETE FROM " + tableName);
-
-            } catch (SQLException ex) {
-                Bukkit.getLogger().severe("[BK-Tops] Error truncating table " + tableName + ": " + ex.getMessage());
-                ex.printStackTrace();
-            }
-        }
+        clearTable(getTopTableName(topId));
     }
 
     public static void truncateSnapshotTable(@NotNull String topId) {
-        String tableName = getSnapshotTableName(topId);
+        clearTable(getSnapshotTableName(topId));
+    }
 
+    private static void clearTable(@NotNull String tableName) {
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement()) {
-
-            stmt.executeUpdate("TRUNCATE TABLE " + tableName);
-
-        } catch (SQLException e) {
-            try (Connection conn = DatabaseConnection.getConnection();
-                 Statement stmt = conn.createStatement()) {
-
+            try {
+                stmt.executeUpdate("TRUNCATE TABLE " + tableName);
+            } catch (SQLException e) {
                 stmt.executeUpdate("DELETE FROM " + tableName);
-
-            } catch (SQLException ex) {
-                Bukkit.getLogger().severe("[BK-Tops] Error truncating snapshot table " + tableName + ": " + ex.getMessage());
-                ex.printStackTrace();
             }
+        } catch (SQLException e) {
+            Bukkit.getLogger().severe("[BK-Tops] Error clearing table " + tableName + ": " + e.getMessage());
+            e.printStackTrace();
         }
     }
 

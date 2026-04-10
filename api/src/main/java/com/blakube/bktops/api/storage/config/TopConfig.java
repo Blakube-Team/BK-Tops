@@ -1,10 +1,10 @@
 package com.blakube.bktops.api.storage.config;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-/**
- * Configuration for a leaderboard.
- */
+import static com.blakube.bktops.api.storage.config.ConditionSet.EMPTY;
+
 public final class TopConfig {
 
     private final int size;
@@ -14,6 +14,8 @@ public final class TopConfig {
     private final int rotativeQueueSize;
     private final int batchSize;
     private final int tickDelay;
+    private final String displayName;
+    private final ConditionSet conditionSet;
 
     private TopConfig(@NotNull Builder builder) {
         this.size = builder.size;
@@ -23,10 +25,22 @@ public final class TopConfig {
         this.rotativeQueueSize = builder.rotativeQueueSize;
         this.batchSize = builder.batchSize;
         this.tickDelay = builder.tickDelay;
+        this.displayName = builder.displayName;
+        this.conditionSet = builder.conditionSet;
     }
 
     public int getSize() {
         return size;
+    }
+
+    @Nullable
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    @NotNull
+    public ConditionSet getConditionSet() {
+        return conditionSet;
     }
 
     public boolean isEnableOnlineQueue() {
@@ -66,6 +80,8 @@ public final class TopConfig {
         private int rotativeQueueSize = 50;
         private int batchSize = 10;
         private int tickDelay = 1;
+        private String displayName = null;
+        private ConditionSet conditionSet = EMPTY;
 
         private Builder() {
         }
@@ -128,6 +144,18 @@ public final class TopConfig {
         }
 
         @NotNull
+        public Builder displayName(@Nullable String displayName) {
+            this.displayName = displayName;
+            return this;
+        }
+
+        @NotNull
+        public Builder conditionSet(@NotNull ConditionSet conditionSet) {
+            this.conditionSet = conditionSet;
+            return this;
+        }
+
+        @NotNull
         public TopConfig build() {
             return new TopConfig(this);
         }
@@ -143,6 +171,7 @@ public final class TopConfig {
                 ", rotativeQueueSize=" + rotativeQueueSize +
                 ", batchSize=" + batchSize +
                 ", tickDelay=" + tickDelay +
+                ", displayName='" + displayName + '\'' +
                 '}';
     }
 }

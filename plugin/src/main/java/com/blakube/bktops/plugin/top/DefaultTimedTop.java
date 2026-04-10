@@ -2,6 +2,7 @@ package com.blakube.bktops.plugin.top;
 
 import com.blakube.bktops.api.provider.ValueProvider;
 import com.blakube.bktops.api.resolver.NameResolver;
+import com.blakube.bktops.api.top.TopEntry;
 import com.blakube.bktops.api.storage.TopStorage;
 import com.blakube.bktops.api.storage.config.TopConfig;
 import com.blakube.bktops.api.timed.ResetSchedule;
@@ -18,8 +19,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -104,11 +106,18 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
     }
 
     public CompletableFuture<Void> resetAsync() {
+        Map<K, Double> snapshots = collectCurrentSnapshots();
+
+        cache.setEntries(Collections.emptyList());
+        queue.clear();
 
         return CompletableFuture.runAsync(() -> {
             try {
-
-                updateAllSnapshotsSync();
+                if (!snapshots.isEmpty() && valueProvider instanceof TimedValueProvider) {
+                    @SuppressWarnings("unchecked")
+                    TimedValueProvider<K> timedProvider = (TimedValueProvider<K>) valueProvider;
+                    timedProvider.updateSnapshotsBatch(snapshots);
+                }
 
                 storage.clear(id);
 
@@ -120,7 +129,6 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
                     this.metaDAO.save(this.startTime, this.nextResetTime, previousStart);
                 }
 
-                // Dispatch timed top reset event
                 TopEventDispatcher.fireTimedReset(
                         id,
                         resetSchedule.getType(),
@@ -136,44 +144,23 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
         }, DatabaseExecutors.DB_EXECUTOR);
     }
 
-    private void updateAllSnapshotsSync() {
+    private Map<K, Double> collectCurrentSnapshots() {
+        if (!(valueProvider instanceof TimedValueProvider)) return Map.of();
 
-        if (!(valueProvider instanceof TimedValueProvider)) {
-            return;
-        }
-
+        @SuppressWarnings("unchecked")
         TimedValueProvider<K> timedProvider = (TimedValueProvider<K>) valueProvider;
         ValueProvider<K> baseProvider = timedProvider.getBaseProvider();
+        if (baseProvider == null) return Map.of();
 
-        if (baseProvider == null) {
-            return;
+        List<TopEntry<K>> entries = getEntries();
+        if (entries.isEmpty()) return Map.of();
+
+        Map<K, Double> result = new HashMap<>(entries.size());
+        for (TopEntry<K> entry : entries) {
+            Double value = baseProvider.getValue(entry.getIdentifier());
+            if (value != null) result.put(entry.getIdentifier(), value);
         }
-
-        var entries = new ArrayList<>(getEntries());
-
-        if (entries.isEmpty()) {
-            return;
-        }
-
-        Map<K, Double> snapshotBatch = new HashMap<>();
-
-        for (var entry : entries) {
-            K identifier = entry.getIdentifier();
-
-            Double currentValue = baseProvider.getValue(identifier);
-
-            if (currentValue != null) {
-                snapshotBatch.put(identifier, currentValue);
-            }
-        }
-
-        timedProvider.updateSnapshotsBatch(snapshotBatch);
-
-    }
-
-    @Deprecated
-    public void resetWithSnapshots() {
-        resetAsync();
+        return result;
     }
 
     private long calculateNextResetTime() {
@@ -216,7 +203,8 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
                 next = now.plus(resetSchedule.getInterval());
                 break;
             default:
-                next = now != null ? now.plus(1, ChronoUnit.DAYS) : null;
+                next = now.plus(1, ChronoUnit.DAYS);
+                break;
         }
         return next.toEpochMilli();
     }

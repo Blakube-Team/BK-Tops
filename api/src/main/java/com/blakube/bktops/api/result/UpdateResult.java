@@ -5,13 +5,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/**
- * Result of processing an identifier.
- */
 public final class UpdateResult<K> {
 
     private final K identifier;
     private final boolean success;
+    private final String displayName;
     private final Double oldValue;
     private final Double newValue;
     private final Integer oldPosition;
@@ -20,6 +18,7 @@ public final class UpdateResult<K> {
 
     private UpdateResult(@NotNull K identifier,
                         boolean success,
+                        @Nullable String displayName,
                         @Nullable Double oldValue,
                         @Nullable Double newValue,
                         @Nullable Integer oldPosition,
@@ -27,6 +26,7 @@ public final class UpdateResult<K> {
                         @Nullable String reason) {
         this.identifier = Objects.requireNonNull(identifier, "identifier cannot be null");
         this.success = success;
+        this.displayName = displayName;
         this.oldValue = oldValue;
         this.newValue = newValue;
         this.oldPosition = oldPosition;
@@ -35,53 +35,44 @@ public final class UpdateResult<K> {
     }
 
     @NotNull
-    public K getIdentifier() {
-        return identifier;
-    }
+    public K getIdentifier() { return identifier; }
 
-    public boolean isSuccess() {
-        return success;
-    }
+    public boolean isSuccess() { return success; }
 
     @Nullable
-    public Double getOldValue() {
-        return oldValue;
-    }
+    public String getDisplayName() { return displayName; }
 
     @Nullable
-    public Double getNewValue() {
-        return newValue;
-    }
+    public Double getOldValue() { return oldValue; }
 
     @Nullable
-    public Integer getOldPosition() {
-        return oldPosition;
-    }
+    public Double getNewValue() { return newValue; }
 
     @Nullable
-    public Integer getNewPosition() {
-        return newPosition;
-    }
+    public Integer getOldPosition() { return oldPosition; }
 
     @Nullable
-    public String getReason() {
-        return reason;
-    }
+    public Integer getNewPosition() { return newPosition; }
 
-    public boolean hasValueChanged() {
-        return !Objects.equals(oldValue, newValue);
-    }
+    @Nullable
+    public String getReason() { return reason; }
 
-    public boolean hasPositionChanged() {
-        return !Objects.equals(oldPosition, newPosition);
-    }
+    public boolean hasValueChanged() { return !Objects.equals(oldValue, newValue); }
 
-    public boolean isEnteredTop() {
-        return oldPosition == null && newPosition != null;
-    }
+    public boolean hasPositionChanged() { return !Objects.equals(oldPosition, newPosition); }
 
-    public boolean isLeftTop() {
-        return oldPosition != null && newPosition == null;
+    public boolean isEnteredTop() { return oldPosition == null && newPosition != null; }
+
+    public boolean isLeftTop() { return oldPosition != null && newPosition == null; }
+
+    @NotNull
+    public static <K> UpdateResult<K> success(@NotNull K identifier,
+                                              @Nullable String displayName,
+                                              @Nullable Double oldValue,
+                                              @Nullable Double newValue,
+                                              @Nullable Integer oldPosition,
+                                              @Nullable Integer newPosition) {
+        return new UpdateResult<>(identifier, true, displayName, oldValue, newValue, oldPosition, newPosition, null);
     }
 
     @NotNull
@@ -90,12 +81,12 @@ public final class UpdateResult<K> {
                                               @Nullable Double newValue,
                                               @Nullable Integer oldPosition,
                                               @Nullable Integer newPosition) {
-        return new UpdateResult<>(identifier, true, oldValue, newValue, oldPosition, newPosition, null);
+        return new UpdateResult<>(identifier, true, null, oldValue, newValue, oldPosition, newPosition, null);
     }
 
     @NotNull
     public static <K> UpdateResult<K> failure(@NotNull K identifier, @NotNull String reason) {
-        return new UpdateResult<>(identifier, false, null, null, null, null, reason);
+        return new UpdateResult<>(identifier, false, null, null, null, null, null, reason);
     }
 
     @Override

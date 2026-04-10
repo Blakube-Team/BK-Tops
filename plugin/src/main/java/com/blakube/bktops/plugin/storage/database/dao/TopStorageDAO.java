@@ -66,6 +66,139 @@ public final class TopStorageDAO<K> {
         return CompletableFuture.supplyAsync(this::loadAll, DatabaseExecutors.DB_EXECUTOR);
     }
 
+    @NotNull
+    public List<TopEntry<K>> loadAllWithLimit(int limit) {
+        List<TopEntry<K>> entries = new ArrayList<>();
+
+        String sql = String.format(
+                "SELECT identifier, display_name, top_value, last_updated FROM %s ORDER BY top_value DESC LIMIT ?",
+                tableName
+        );
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, limit);
+            try (ResultSet rs = stmt.executeQuery()) {
+                int position = 1;
+                while (rs.next()) {
+                    K identifier = serializer.deserialize(rs.getString("identifier"));
+                    String displayName = rs.getString("display_name");
+                    double value = rs.getDouble("top_value");
+                    long lastUpdated = rs.getLong("last_updated");
+                    entries.add(new TopEntry<>(identifier, displayName, value, position, lastUpdated));
+                    position++;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return entries;
+    }
+
+    public void trimToMaxSize(int maxSize) {
+        String sql = buildTrimSql();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, maxSize);
+            stmt.executeUpdate();
+            cachedSize = -1;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void saveAndTrim(@NotNull K identifier, @NotNull String displayName,
+                            double value, int maxSize) {
+        String saveSql = buildUpsertSql();
+        String trimSql = buildTrimSql();
+
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                try (PreparedStatement stmt = conn.prepareStatement(saveSql)) {
+                    stmt.setString(1, serializer.serialize(identifier));
+                    stmt.setString(2, displayName);
+                    stmt.setDouble(3, value);
+                    stmt.setLong(4, System.currentTimeMillis());
+                    stmt.executeUpdate();
+                }
+                try (PreparedStatement stmt = conn.prepareStatement(trimSql)) {
+                    stmt.setInt(1, maxSize);
+                    stmt.executeUpdate();
+                }
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+            cachedSize = -1;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void saveBatchAndTrim(@NotNull List<BatchEntry<K>> entries, int maxSize) {
+        if (entries.isEmpty()) return;
+
+        String saveSql = buildUpsertSql();
+        String trimSql = buildTrimSql();
+
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                try (PreparedStatement stmt = conn.prepareStatement(saveSql)) {
+                    long now = System.currentTimeMillis();
+                    for (BatchEntry<K> entry : entries) {
+                        stmt.setString(1, serializer.serialize(entry.identifier));
+                        stmt.setString(2, entry.displayName);
+                        stmt.setDouble(3, entry.value);
+                        stmt.setLong(4, now);
+                        stmt.addBatch();
+                    }
+                    stmt.executeBatch();
+                }
+                try (PreparedStatement stmt = conn.prepareStatement(trimSql)) {
+                    stmt.setInt(1, maxSize);
+                    stmt.executeUpdate();
+                }
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+            cachedSize = -1;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String buildUpsertSql() {
+        boolean isMySql = "mysql".equalsIgnoreCase(DatabaseConnection.getDriver());
+        if (isMySql) {
+            return String.format(
+                    "INSERT INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?) " +
+                    "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), " +
+                    "top_value = VALUES(top_value), last_updated = VALUES(last_updated)",
+                    tableName);
+        }
+        return String.format(
+                "MERGE INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?)",
+                tableName);
+    }
+
+    private String buildTrimSql() {
+        return String.format(
+                "DELETE FROM %s WHERE identifier NOT IN " +
+                "(SELECT identifier FROM (SELECT identifier FROM %s ORDER BY top_value DESC LIMIT ?) AS keep_list)",
+                tableName, tableName);
+    }
+
     public boolean save(@NotNull K identifier, @NotNull String displayName, double value) {
         boolean isMySql = "mysql".equalsIgnoreCase(DatabaseConnection.getDriver());
         String sql;
@@ -182,8 +315,10 @@ public final class TopStorageDAO<K> {
     @NotNull
     public Optional<TopEntry<K>> get(@NotNull K identifier) {
         String sql = String.format(
-                "SELECT display_name, top_value, last_updated FROM %s WHERE identifier = ?",
-                tableName
+                "SELECT display_name, top_value, last_updated, " +
+                "(SELECT COUNT(*) + 1 FROM %s WHERE top_value > t.top_value) AS position " +
+                "FROM %s t WHERE identifier = ?",
+                tableName, tableName
         );
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -194,10 +329,9 @@ public final class TopStorageDAO<K> {
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     String displayName = rs.getString("display_name");
-                    double value = rs.getDouble("top_value");
-                    long lastUpdated = rs.getLong("last_updated");
-                    int position = getPosition(identifier);
-
+                    double value       = rs.getDouble("top_value");
+                    long lastUpdated   = rs.getLong("last_updated");
+                    int position       = rs.getInt("position");
                     return Optional.of(new TopEntry<>(identifier, displayName, value, position, lastUpdated));
                 }
             }

@@ -71,11 +71,13 @@ public final class DatabaseConnection {
         hikariConfig.setIdleTimeout(config.getInt("idle-timeout", 600000));
         hikariConfig.setMaxLifetime(config.getInt("max-lifetime", 1800000));
 
-        hikariConfig.setLeakDetectionThreshold(0);
+        hikariConfig.setLeakDetectionThreshold(30_000);
 
-        hikariConfig.addDataSourceProperty("cachePrepStmts", "true");
-        hikariConfig.addDataSourceProperty("prepStmtCacheSize", "250");
-        hikariConfig.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+        if (driver.equals("mysql")) {
+            hikariConfig.addDataSourceProperty("cachePrepStmts", "true");
+            hikariConfig.addDataSourceProperty("prepStmtCacheSize", "250");
+            hikariConfig.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+        }
 
         dataSource = new HikariDataSource(hikariConfig);
 

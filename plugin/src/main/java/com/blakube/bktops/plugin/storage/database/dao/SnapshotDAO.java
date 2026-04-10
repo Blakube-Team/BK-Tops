@@ -52,27 +52,21 @@ public final class SnapshotDAO<K> {
     }
 
     public void setSnapshot(@NotNull K identifier, double snapshotValue) {
-
-        boolean isMySql = "mysql".equalsIgnoreCase(DatabaseConnection.getDriver());
-        String sql;
-        if (isMySql) {
-            sql = String.format("INSERT IGNORE INTO %s (identifier, snapshot_value, snapshot_date) VALUES (?, ?, ?)", tableName);
-        } else {
-            sql = String.format("INSERT INTO %s (identifier, snapshot_value, snapshot_date) VALUES (?, ?, ?)", tableName);
-        }
-
-        String serializedId = serializer.serialize(identifier);
+        String sql = String.format(
+                "INSERT IGNORE INTO %s (identifier, snapshot_value, snapshot_date) VALUES (?, ?, ?)",
+                tableName);
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setString(1, serializedId);
+            stmt.setString(1, serializer.serialize(identifier));
             stmt.setDouble(2, snapshotValue);
             stmt.setLong(3, System.currentTimeMillis());
-
             stmt.executeUpdate();
 
-        } catch (SQLException ignored) {}
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     @NotNull

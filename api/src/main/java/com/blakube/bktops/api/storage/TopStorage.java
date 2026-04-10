@@ -7,9 +7,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Storage abstraction for leaderboards.
- */
 public interface TopStorage<K> {
 
     void initialize();
@@ -18,6 +15,11 @@ public interface TopStorage<K> {
 
     @NotNull
     List<TopEntry<K>> load(@NotNull String topId);
+
+    @NotNull
+    default List<TopEntry<K>> load(@NotNull String topId, int limit) {
+        return load(topId);
+    }
 
     boolean save(@NotNull String topId,
                  @NotNull K identifier,

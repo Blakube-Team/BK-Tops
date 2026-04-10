@@ -21,6 +21,7 @@ import com.blakube.bktops.plugin.serializer.UUIDSerializer;
 import com.blakube.bktops.plugin.service.config.ConfigService;
 import com.blakube.bktops.plugin.service.notify.NotifyService;
 import com.blakube.bktops.plugin.storage.database.connection.DatabaseConnection;
+import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
 import com.blakube.bktops.plugin.top.factory.DefaultTopFactory;
 import com.blakube.bktops.plugin.registry.DefaultTopRegistry;
 import com.blakube.bktops.plugin.schedule.ProcessorScheduler;
@@ -78,6 +79,7 @@ public class BKTops extends JavaPlugin {
             registry.clear();
         }
 
+        DatabaseExecutors.awaitPendingTasks();
         DatabaseConnection.close();
 
         NumberFormatterProvider.unload();
@@ -189,8 +191,7 @@ public class BKTops extends JavaPlugin {
             NumberFormatterProvider.getInstance().reload();
         }
 
-        placeholderAPIHook.reload();
-
+        DatabaseExecutors.awaitPendingTasks();
         DatabaseConnection.close();
         setUpStorage();
 

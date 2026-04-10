@@ -16,6 +16,9 @@ money:
   type: normal
   # Amount of the top
   size: 15
+  # Display name for this leaderboard (used in %bktops_displayname_<id>% and /bktops compare)
+  # Supports color codes: "&l&cMoney", "<gold>Money</gold>", etc.
+  # display-name: "&6Money"
   # Placeholder from PlaceholderAPI
   provider: "%vault_eco_balance%"
   # Queue configuration
@@ -34,6 +37,12 @@ money:
     batch-size: 5
     # Delay between batches
     tick-delay: 1
+  # Entry conditions: players must meet ALL conditions to appear in the top
+  # conditions:
+  #   expressions:
+  #     - "%essentials_is_banned% == false"
+  #     - "%vault_rank% != Admin"
+  #   inactivity-days: 30  # Remove players inactive for more than N days (0 = disabled)
 
 kills_perma:
   type: normal

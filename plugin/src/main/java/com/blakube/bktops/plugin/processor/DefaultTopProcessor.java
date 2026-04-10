@@ -9,9 +9,10 @@ import com.blakube.bktops.api.resolver.NameResolver;
 import com.blakube.bktops.api.result.UpdateResult;
 import com.blakube.bktops.api.storage.TopStorage;
 import com.blakube.bktops.api.storage.config.TopConfig;
-import com.blakube.bktops.api.top.TopEntry;
+import com.blakube.bktops.plugin.condition.ConditionEvaluator;
 import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
 import com.blakube.bktops.plugin.storage.database.dao.TopStorageDAO;
+import com.blakube.bktops.plugin.storage.wrapper.TopStorageImpl;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -19,7 +20,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -34,11 +34,8 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
     private final TopStorage<K> storage;
     private final ProcessingQueue<K> queue;
     private final Consumer<UpdateResult<K>> resultConsumer;
+    private final Consumer<K> entryRemover;
     private final AtomicBoolean enabled;
-    private final List<BatchProcessEntry<K>> batchBuffer;
-    private static final int BATCH_THRESHOLD = 20;
-    private long lastBatchFlush = System.currentTimeMillis();
-    private static final long BATCH_FLUSH_INTERVAL_MS = 5000;
 
     public DefaultTopProcessor(@NotNull String topId,
                                @NotNull TopConfig config,
@@ -46,25 +43,25 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
                                @NotNull NameResolver<K> nameResolver,
                                @NotNull TopStorage<K> storage,
                                @NotNull ProcessingQueue<K> queue,
-                               @NotNull Consumer<UpdateResult<K>> resultConsumer) {
-        this.topId = Objects.requireNonNull(topId, "topId cannot be null");
-        this.config = Objects.requireNonNull(config, "config cannot be null");
-        this.valueProvider = Objects.requireNonNull(valueProvider, "valueProvider cannot be null");
-        this.nameResolver = Objects.requireNonNull(nameResolver, "nameResolver cannot be null");
-        this.storage = Objects.requireNonNull(storage, "storage cannot be null");
-        this.queue = Objects.requireNonNull(queue, "queue cannot be null");
+                               @NotNull Consumer<UpdateResult<K>> resultConsumer,
+                               @NotNull Consumer<K> entryRemover) {
+        this.topId          = Objects.requireNonNull(topId,          "topId cannot be null");
+        this.config         = Objects.requireNonNull(config,         "config cannot be null");
+        this.valueProvider  = Objects.requireNonNull(valueProvider,  "valueProvider cannot be null");
+        this.nameResolver   = Objects.requireNonNull(nameResolver,   "nameResolver cannot be null");
+        this.storage        = Objects.requireNonNull(storage,        "storage cannot be null");
+        this.queue          = Objects.requireNonNull(queue,          "queue cannot be null");
         this.resultConsumer = Objects.requireNonNull(resultConsumer, "resultConsumer cannot be null");
-        this.enabled = new AtomicBoolean(true);
-        this.batchBuffer = new ArrayList<>();
+        this.entryRemover   = Objects.requireNonNull(entryRemover,   "entryRemover cannot be null");
+        this.enabled        = new AtomicBoolean(true);
     }
 
     @Override
     public int processBatch(int batchSize) {
-        if (!enabled.get() || batchSize <= 0) {
-            return 0;
-        }
+        if (!enabled.get() || batchSize <= 0) return 0;
 
         List<QueueEntry<K>> entries = queue.poll(batchSize);
+        if (entries.isEmpty()) return 0;
 
         if (entries.size() >= 5) {
             processBatchOptimized(entries);
@@ -74,23 +71,23 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
             }
         }
 
-        long now = System.currentTimeMillis();
-        if (now - lastBatchFlush > BATCH_FLUSH_INTERVAL_MS) {
-            flushBatch();
-            lastBatchFlush = now;
-        }
-
         return entries.size();
     }
 
     private void processBatchOptimized(@NotNull List<QueueEntry<K>> entries) {
-        List<BatchProcessEntry<K>> processEntries = new ArrayList<>();
+        record Resolved<K>(K identifier, String displayName, double value) {}
+
+        List<Resolved<K>> resolved = new ArrayList<>(entries.size());
 
         for (QueueEntry<K> entry : entries) {
             K identifier = entry.getIdentifier();
+            if (shouldBypass(identifier)) continue;
 
-            if (shouldBypass(identifier)) {
-                continue;
+            if (!config.getConditionSet().isEmpty() && identifier instanceof UUID uuid) {
+                if (!ConditionEvaluator.passes(config.getConditionSet(), uuid)) {
+                    entryRemover.accept(identifier);
+                    continue;
+                }
             }
 
             String displayName = nameResolver.resolve(identifier);
@@ -105,47 +102,37 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
                 continue;
             }
 
-            processEntries.add(new BatchProcessEntry<>(identifier, displayName, value));
+            if (value == 0.0) continue;
+
+            resolved.add(new Resolved<>(identifier, displayName, value));
         }
 
-        if (processEntries.isEmpty()) {
-            return;
-        }
+        if (resolved.isEmpty()) return;
 
-        CompletableFuture.supplyAsync(() -> {
-                    List<TopStorageDAO.BatchEntry<K>> batchEntries = new ArrayList<>();
-                    for (BatchProcessEntry<K> pe : processEntries) {
-                        batchEntries.add(new TopStorageDAO.BatchEntry<>(
-                                pe.identifier,
-                                pe.displayName,
-                                pe.value
-                        ));
+        CompletableFuture
+                .runAsync(() -> {
+                    if (storage instanceof TopStorageImpl<K> impl) {
+                        List<TopStorageDAO.BatchEntry<K>> batch = new ArrayList<>(resolved.size());
+                        for (Resolved<K> r : resolved) {
+                            batch.add(new TopStorageDAO.BatchEntry<>(r.identifier(), r.displayName(), r.value()));
+                        }
+                        impl.saveBatch(batch, config.getSize()); // save + trimToMaxSize in one call
+                    } else {
+                        for (Resolved<K> r : resolved) {
+                            storage.save(topId, r.identifier(), r.displayName(), r.value(), config.getSize());
+                        }
                     }
-
-                    if (storage instanceof com.blakube.bktops.plugin.storage.wrapper.TopStorageImpl) {
-                        @SuppressWarnings("unchecked")
-                        com.blakube.bktops.plugin.storage.wrapper.TopStorageImpl<K> impl =
-                                (com.blakube.bktops.plugin.storage.wrapper.TopStorageImpl<K>) storage;
-                        impl.saveBatch(batchEntries);
-                    }
-
-                    return processEntries;
                 }, DatabaseExecutors.DB_EXECUTOR)
-                .thenAccept(savedEntries -> {
-                    for (BatchProcessEntry<K> pe : savedEntries) {
-                        UpdateResult<K> result = UpdateResult.success(
-                                pe.identifier,
-                                null,
-                                pe.value,
-                                null,
-                                null
-                        );
-                        resultConsumer.accept(result);
+                .thenRun(() -> {
+                    for (Resolved<K> r : resolved) {
+                        resultConsumer.accept(UpdateResult.success(
+                                r.identifier(), r.displayName(), null, r.value(), null, null));
                     }
                 })
                 .exceptionally(ex -> {
-                    for (BatchProcessEntry<K> pe : processEntries) {
-                        resultConsumer.accept(UpdateResult.failure(pe.identifier, "Batch error: " + ex.getMessage()));
+                    for (Resolved<K> r : resolved) {
+                        resultConsumer.accept(UpdateResult.failure(r.identifier(),
+                                "Batch error: " + ex.getMessage()));
                     }
                     return null;
                 });
@@ -153,10 +140,7 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
 
     private void processEntry(@NotNull QueueEntry<K> entry) {
         K identifier = entry.getIdentifier();
-
-        if (shouldBypass(identifier)) {
-            return;
-        }
+        if (shouldBypass(identifier)) return;
 
         String displayName = nameResolver.resolve(identifier);
         if (displayName == null) {
@@ -164,51 +148,29 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
             return;
         }
 
+        if (!config.getConditionSet().isEmpty() && identifier instanceof UUID uuid) {
+            if (!ConditionEvaluator.passes(config.getConditionSet(), uuid)) {
+                entryRemover.accept(identifier);
+                return;
+            }
+        }
+
+        Double newValue = valueProvider.getValue(identifier);
+        if (newValue == null) {
+            resultConsumer.accept(UpdateResult.failure(identifier, "Failed to get value from provider"));
+            return;
+        }
+
+        if (newValue == 0.0) return;
+
         CompletableFuture
-                .supplyAsync(() -> {
-                    Optional<TopEntry<K>> oldEntryOpt = storage.getEntry(topId, identifier);
-                    Double newValue = valueProvider.getValue(identifier);
-                    return new Object[]{oldEntryOpt, newValue};
-                }, DatabaseExecutors.DB_EXECUTOR)
-                .thenCompose(arr -> {
-                    @SuppressWarnings("unchecked")
-                    Optional<TopEntry<K>> oldEntryOpt = (Optional<TopEntry<K>>) arr[0];
-                    Double newValue = (Double) arr[1];
-
-                    if (newValue == null) {
-                        resultConsumer.accept(UpdateResult.failure(identifier, "Failed to get value from provider"));
-                        return CompletableFuture.completedFuture(null);
-                    }
-
-                    Double oldValue = oldEntryOpt.map(TopEntry::getValue).orElse(null);
-                    Integer oldPosition = oldEntryOpt.map(TopEntry::getPosition).orElse(null);
-
-                    return CompletableFuture.supplyAsync(
-                                    () -> storage.save(topId, identifier, displayName, newValue, config.getSize()),
-                                    DatabaseExecutors.DB_EXECUTOR
-                            )
-                            .thenCompose(saved -> {
-                                if (!saved && oldPosition == null) {
-                                    resultConsumer.accept(UpdateResult.success(identifier, oldValue, newValue, null, null));
-                                    return CompletableFuture.completedFuture(null);
-                                }
-
-                                return CompletableFuture.supplyAsync(
-                                                () -> storage.getPosition(topId, identifier),
-                                                DatabaseExecutors.DB_EXECUTOR
-                                        )
-                                        .thenAccept(newPos -> {
-                                            Integer newPosition = (newPos == -1) ? null : newPos;
-
-                                            UpdateResult<K> result = UpdateResult.success(
-                                                    identifier, oldValue, newValue, oldPosition, newPosition
-                                            );
-                                            resultConsumer.accept(result);
-                                        });
-                            });
-                })
+                .runAsync(() -> storage.save(topId, identifier, displayName, newValue, config.getSize()),
+                        DatabaseExecutors.DB_EXECUTOR)
+                .thenRun(() -> resultConsumer.accept(
+                        UpdateResult.success(identifier, displayName, null, newValue, null, null)))
                 .exceptionally(ex -> {
-                    resultConsumer.accept(UpdateResult.failure(identifier, "Unexpected error: " + ex.getMessage()));
+                    resultConsumer.accept(UpdateResult.failure(identifier,
+                            "Unexpected error: " + ex.getMessage()));
                     return null;
                 });
     }
@@ -216,76 +178,21 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
     @Override
     public void processImmediate(@NotNull K identifier, @NotNull String reason) {
         Objects.requireNonNull(identifier, "identifier cannot be null");
-        Objects.requireNonNull(reason, "reason cannot be null");
-
-        if (!enabled.get()) {
-            return;
-        }
-
-        if (shouldBypass(identifier)) {
-            return;
-        }
-
-        flushBatch();
-
-        QueueEntry<K> entry = new QueueEntry<>(identifier, Priority.CRITICAL, reason);
-        processEntry(entry);
-    }
-
-    private void flushBatch() {
-        synchronized (batchBuffer) {
-            if (!batchBuffer.isEmpty()) {
-                List<BatchProcessEntry<K>> toFlush = new ArrayList<>(batchBuffer);
-                batchBuffer.clear();
-
-                processBatchOptimized(toFlush.stream()
-                        .map(pe -> new QueueEntry<>(pe.identifier, Priority.MEDIUM, "batch_flush"))
-                        .toList()
-                );
-            }
-        }
+        Objects.requireNonNull(reason,     "reason cannot be null");
+        if (!enabled.get()) return;
+        if (shouldBypass(identifier)) return;
+        processEntry(new QueueEntry<>(identifier, Priority.CRITICAL, reason));
     }
 
     private boolean shouldBypass(@NotNull K identifier) {
-        if (!(identifier instanceof UUID)) {
-            return false;
-        }
-
-        UUID uuid = (UUID) identifier;
+        if (!(identifier instanceof UUID uuid)) return false;
         Player player = Bukkit.getPlayer(uuid);
-
-        if (player == null) {
-            return false;
-        }
-
-        String permission = "bktops.bypass." + topId;
-
-        return player.hasPermission(permission);
+        return player != null && player.hasPermission("bktops.bypass." + topId);
     }
 
     @Override
-    public boolean isEnabled() {
-        return enabled.get();
-    }
+    public boolean isEnabled() { return enabled.get(); }
 
     @Override
-    public void setEnabled(boolean enabled) {
-        this.enabled.set(enabled);
-
-        if (!enabled) {
-            flushBatch();
-        }
-    }
-
-    private static class BatchProcessEntry<K> {
-        final K identifier;
-        final String displayName;
-        final double value;
-
-        BatchProcessEntry(K identifier, String displayName, double value) {
-            this.identifier = identifier;
-            this.displayName = displayName;
-            this.value = value;
-        }
-    }
+    public void setEnabled(boolean enabled) { this.enabled.set(enabled); }
 }
