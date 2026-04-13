@@ -83,6 +83,11 @@ public class DefaultTop<K> implements Top<K> {
 
         if (displayName == null) return;
 
+        List<K> staleIds = cache.removeByDisplayName(displayName, identifier);
+        for (K staleId : staleIds) {
+            CompletableFuture.runAsync(() -> storage.remove(id, staleId), DatabaseExecutors.DB_EXECUTOR);
+        }
+
         int newPositionRaw = cache.updateEntry(identifier, displayName, result.getNewValue(), config.getSize());
         Integer newPosition = newPositionRaw == -1 ? null : newPositionRaw;
 

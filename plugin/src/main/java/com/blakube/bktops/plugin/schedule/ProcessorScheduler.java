@@ -21,9 +21,7 @@ public final class ProcessorScheduler {
     private final TopRegistry<UUID> registry;
     private final List<BukkitTask> tasks;
 
-    private final Map<String, Long> nextProcessAtMs      = new HashMap<>();
-    private final Map<String, Long> nextOnlineEnqueueAtMs = new HashMap<>();
-    private final Map<String, Integer> rotativeOffset    = new HashMap<>();
+    private final Map<String, Integer> rotativeOffset = new HashMap<>();
 
     public ProcessorScheduler(@NotNull JavaPlugin plugin, @NotNull TopRegistry<UUID> registry) {
         this.plugin   = plugin;
@@ -85,88 +83,64 @@ public final class ProcessorScheduler {
     }
 
     private void startMainProcessor() {
-        BukkitTask task = new BukkitRunnable() {
-            @Override
-            public void run() {
-                for (Top<UUID> top : registry.getAll()) {
-                    if (!top.getProcessor().isEnabled()) continue;
-
-                    int tickDelay = top.getConfig().getTickDelay();
-                    if (tickDelay <= 1) {
-                        top.getProcessor().processBatch(top.getConfig().getBatchSize());
-                        continue;
-                    }
-
-                    long now     = System.currentTimeMillis();
-                    long periodMs = tickDelay * 50L;
-                    String id    = top.getId();
-                    if (now >= nextProcessAtMs.getOrDefault(id, 0L)) {
-                        top.getProcessor().processBatch(top.getConfig().getBatchSize());
-                        nextProcessAtMs.put(id, now + periodMs);
-                    }
+        for (Top<UUID> top : registry.getAll()) {
+            int period = Math.max(1, top.getConfig().getTickDelay());
+            BukkitTask task = new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (!top.getProcessor().isEnabled()) return;
+                    top.getProcessor().processBatch(top.getConfig().getBatchSize());
                 }
-            }
-        }.runTaskTimer(plugin, 0L, 1L);
-
-        tasks.add(task);
+            }.runTaskTimer(plugin, 0L, period);
+            tasks.add(task);
+        }
     }
 
     private void startOnlineQueueTask() {
-        BukkitTask task = new BukkitRunnable() {
-            @Override
-            public void run() {
-                List<UUID> onlineUUIDs = Bukkit.getOnlinePlayers().stream()
-                        .map(Player::getUniqueId)
-                        .toList();
-
-                if (onlineUUIDs.isEmpty()) return;
-
-                long now = System.currentTimeMillis();
-                for (Top<UUID> top : registry.getAll()) {
-                    if (!top.getConfig().isEnableOnlineQueue()) continue;
-
-                    String id      = top.getId();
-                    long periodMs  = Math.max(1, top.getConfig().getOnlineQueueInterval()) * 50L;
-                    if (now >= nextOnlineEnqueueAtMs.getOrDefault(id, 0L)) {
-                        top.enqueue(onlineUUIDs, Priority.HIGH, "online_periodic");
-                        nextOnlineEnqueueAtMs.put(id, now + periodMs);
-                    }
+        for (Top<UUID> top : registry.getAll()) {
+            if (!top.getConfig().isEnableOnlineQueue()) continue;
+            int period = Math.max(1, top.getConfig().getOnlineQueueInterval());
+            BukkitTask task = new BukkitRunnable() {
+                @Override
+                public void run() {
+                    List<UUID> onlineUUIDs = Bukkit.getOnlinePlayers().stream()
+                            .map(Player::getUniqueId)
+                            .toList();
+                    if (onlineUUIDs.isEmpty()) return;
+                    top.enqueue(onlineUUIDs, Priority.HIGH, "online_periodic");
                 }
-            }
-        }.runTaskTimer(plugin, 20L, 20L);
-
-        tasks.add(task);
+            }.runTaskTimer(plugin, 20L, period);
+            tasks.add(task);
+        }
     }
 
     private void startRotativeQueueTask() {
-        BukkitTask task = new BukkitRunnable() {
-            @Override
-            public void run() {
-                for (Top<UUID> top : registry.getAll()) {
-                    if (!top.getConfig().isEnableRotativeQueue()) continue;
-
+        for (Top<UUID> top : registry.getAll()) {
+            if (!top.getConfig().isEnableRotativeQueue()) continue;
+            rotativeOffset.put(top.getId(), 0);
+            BukkitTask task = new BukkitRunnable() {
+                @Override
+                public void run() {
                     var entries = top.getEntries();
-                    if (entries.isEmpty()) continue;
+                    if (entries.isEmpty()) return;
 
-                    String id      = top.getId();
-                    int maxSize    = Math.min(top.getConfig().getRotativeQueueSize(), entries.size());
-                    int offset     = rotativeOffset.getOrDefault(id, 0);
-                    int batchSize  = 10;
+                    String id     = top.getId();
+                    int maxSize   = Math.min(top.getConfig().getRotativeQueueSize(), entries.size());
+                    int offset    = rotativeOffset.getOrDefault(id, 0);
+                    int batchSize = 10;
 
+                    List<UUID> toEnqueue = new ArrayList<>(batchSize);
                     for (int i = 0; i < batchSize && offset < maxSize; i++, offset++) {
-                        top.enqueue(
-                                List.of(entries.get(offset).getIdentifier()),
-                                Priority.MEDIUM,
-                                "rotative_check"
-                        );
+                        toEnqueue.add(entries.get(offset).getIdentifier());
                     }
-
+                    if (!toEnqueue.isEmpty()) {
+                        top.enqueue(toEnqueue, Priority.MEDIUM, "rotative_check");
+                    }
                     rotativeOffset.put(id, offset >= maxSize ? 0 : offset);
                 }
-            }
-        }.runTaskTimer(plugin, 40L, 40L);
-
-        tasks.add(task);
+            }.runTaskTimer(plugin, 40L, 40L);
+            tasks.add(task);
+        }
     }
 
     private void startTimedResetTask() {

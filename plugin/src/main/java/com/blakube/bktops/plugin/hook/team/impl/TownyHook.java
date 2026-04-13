@@ -5,10 +5,7 @@ import com.blakube.bktops.plugin.service.team.TeamHookHelpService;
 import com.palmergames.bukkit.towny.TownyAPI;
 import com.palmergames.bukkit.towny.object.Resident;
 import com.palmergames.bukkit.towny.object.Town;
-import me.ulrich.clans.api.ClanAPIManager;
-import me.ulrich.clans.api.PlayerAPIManager;
 
-import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 

@@ -4,9 +4,8 @@ import com.blakube.bktops.api.team.TeamHook;
 import com.blakube.bktops.plugin.service.team.TeamHookHelpService;
 import dev.kitteh.factions.FPlayer;
 import dev.kitteh.factions.FPlayers;
-import org.bukkit.entity.Player;
 
-import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,26 +39,27 @@ public final class FactionsUUIDHook implements TeamHook {
 
     @Override
     public Set<UUID> getTeamMembers(UUID anyTeamMember) {
-        Set<UUID> members = Set.of();
         FPlayer fPlayer = FPlayers.fPlayers().get(anyTeamMember);
+        if (fPlayer == null || !fPlayer.hasFaction()) return Set.of();
 
-        if(!fPlayer.hasFaction()) return members;
-
-        return fPlayer.faction().members().stream().map(FPlayer::asPlayer).map(Player::getUniqueId).
-                collect(java.util.stream.Collectors.toSet());
+        return fPlayer.faction().members().stream()
+                .map(FPlayer::asPlayer)
+                .filter(Objects::nonNull)
+                .map(p -> p.getUniqueId())
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     @Override
     public String getTeamDisplayName(UUID anyTeamMember) {
         FPlayer fPlayer = FPlayers.fPlayers().get(anyTeamMember);
-
-        if(!fPlayer.hasFaction()) return "";
+        if (fPlayer == null || !fPlayer.hasFaction()) return "";
         return fPlayer.faction().tag();
     }
 
     @Override
     public boolean isTeamMember(UUID uuid) {
-        return FPlayers.fPlayers().get(uuid).hasFaction();
+        FPlayer fPlayer = FPlayers.fPlayers().get(uuid);
+        return fPlayer != null && fPlayer.hasFaction();
     }
 
     @Override

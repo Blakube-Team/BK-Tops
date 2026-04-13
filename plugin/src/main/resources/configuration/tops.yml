@@ -36,7 +36,7 @@ money:
     # How much entries will be processed per tick?
     batch-size: 5
     # Delay between batches
-    tick-delay: 1
+    tick-delay: 20
   # Entry conditions: players must meet ALL conditions to appear in the top
   # conditions:
   #   expressions:

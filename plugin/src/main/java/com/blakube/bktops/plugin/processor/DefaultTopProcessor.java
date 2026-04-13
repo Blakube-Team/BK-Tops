@@ -63,14 +63,7 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
         List<QueueEntry<K>> entries = queue.poll(batchSize);
         if (entries.isEmpty()) return 0;
 
-        if (entries.size() >= 5) {
-            processBatchOptimized(entries);
-        } else {
-            for (QueueEntry<K> entry : entries) {
-                processEntry(entry);
-            }
-        }
-
+        processBatchOptimized(entries);
         return entries.size();
     }
 
@@ -116,7 +109,7 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
                         for (Resolved<K> r : resolved) {
                             batch.add(new TopStorageDAO.BatchEntry<>(r.identifier(), r.displayName(), r.value()));
                         }
-                        impl.saveBatch(batch, config.getSize()); // save + trimToMaxSize in one call
+                        impl.saveBatch(batch, config.getSize());
                     } else {
                         for (Resolved<K> r : resolved) {
                             storage.save(topId, r.identifier(), r.displayName(), r.value(), config.getSize());
@@ -138,50 +131,13 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
                 });
     }
 
-    private void processEntry(@NotNull QueueEntry<K> entry) {
-        K identifier = entry.getIdentifier();
-        if (shouldBypass(identifier)) return;
-
-        String displayName = nameResolver.resolve(identifier);
-        if (displayName == null) {
-            resultConsumer.accept(UpdateResult.failure(identifier, "Failed to resolve display name"));
-            return;
-        }
-
-        if (!config.getConditionSet().isEmpty() && identifier instanceof UUID uuid) {
-            if (!ConditionEvaluator.passes(config.getConditionSet(), uuid)) {
-                entryRemover.accept(identifier);
-                return;
-            }
-        }
-
-        Double newValue = valueProvider.getValue(identifier);
-        if (newValue == null) {
-            resultConsumer.accept(UpdateResult.failure(identifier, "Failed to get value from provider"));
-            return;
-        }
-
-        if (newValue == 0.0) return;
-
-        CompletableFuture
-                .runAsync(() -> storage.save(topId, identifier, displayName, newValue, config.getSize()),
-                        DatabaseExecutors.DB_EXECUTOR)
-                .thenRun(() -> resultConsumer.accept(
-                        UpdateResult.success(identifier, displayName, null, newValue, null, null)))
-                .exceptionally(ex -> {
-                    resultConsumer.accept(UpdateResult.failure(identifier,
-                            "Unexpected error: " + ex.getMessage()));
-                    return null;
-                });
-    }
-
-    @Override
+@Override
     public void processImmediate(@NotNull K identifier, @NotNull String reason) {
         Objects.requireNonNull(identifier, "identifier cannot be null");
         Objects.requireNonNull(reason,     "reason cannot be null");
         if (!enabled.get()) return;
         if (shouldBypass(identifier)) return;
-        processEntry(new QueueEntry<>(identifier, Priority.CRITICAL, reason));
+        processBatchOptimized(List.of(new QueueEntry<>(identifier, Priority.CRITICAL, reason)));
     }
 
     private boolean shouldBypass(@NotNull K identifier) {

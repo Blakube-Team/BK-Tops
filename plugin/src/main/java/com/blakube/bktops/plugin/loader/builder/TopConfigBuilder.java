@@ -18,9 +18,9 @@ public final class TopConfigBuilder implements Builder<TopConfig, ConfigurationS
             .enableOnlineQueue(section.getBoolean("queues.online", true))
             .onlineQueueInterval(section.getInt("queues.online-interval", 100))
             .enableRotativeQueue(section.getBoolean("queues.rotative", false))
-            .rotativeQueueSize(section.getInt("queues.rotative-size", 50))
-            .batchSize(section.getInt("processing.batch-size", 5))
-            .tickDelay(section.getInt("processing.tick-delay", 1))
+            .rotativeQueueSize(section.getInt("queues.rotative-size", 100))
+            .batchSize(section.getInt("processing.batch-size", 10))
+            .tickDelay(section.getInt("processing.tick-delay", 4))
             .displayName(section.getString("display-name", null))
             .conditionSet(parseConditionSet(section))
             .build();

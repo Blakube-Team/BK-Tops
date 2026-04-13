@@ -44,7 +44,6 @@ public class BKTops extends JavaPlugin {
     private NotifyService  notifyService;
     private TopAPI api;
     private TeamHandler teamManager;
-    private com.blakube.bktops.plugin.service.team.TeamScoreService teamScoreService;
 
     @Override
     public void onEnable() {
@@ -54,12 +53,12 @@ public class BKTops extends JavaPlugin {
         setUpConfig();
         setUpStorage();
         initNumberFormatter();
+        initHooks();
         initTops();
         initServices();
         initApi();
         registerListeners();
         registerCommands();
-        initHooks();
         initScheduler();
 
         getLogger().info("BK-Tops enabled. Tops loaded: " + registry.size());
@@ -152,12 +151,6 @@ public class BKTops extends JavaPlugin {
         messageManager = new MessageParser();
         messageRepository = new MessageRepository(configService);
         notifyService = new NotifyService(messageManager, messageRepository);
-
-        try {
-            this.teamScoreService = new com.blakube.bktops.plugin.service.team.TeamScoreService(this, this.teamManager);
-        } catch (Throwable t) {
-            getLogger().warning("Failed to initialize TeamScoreService: " + t.getMessage());
-        }
     }
 
     private void registerCommands() {
@@ -195,18 +188,31 @@ public class BKTops extends JavaPlugin {
         DatabaseConnection.close();
         setUpStorage();
 
+        reloadTeamHooks();
         initTops();
         initScheduler();
 
         getLogger().info("BK-Tops reloaded. Tops loaded: " + registry.size());
     }
 
-    public TeamHandler getTeamManager() {
-        return teamManager;
+    private void reloadTeamHooks() {
+        try {
+            new java.util.ArrayList<>(teamManager.getRegisteredHooks())
+                    .forEach(teamManager::unregisterHook);
+
+            ConfigContainer hooksCfg = configService.provide(ConfigType.HOOKS);
+            com.blakube.bktops.plugin.service.team.TeamHookHelpService helper =
+                    new com.blakube.bktops.plugin.service.team.TeamHookHelpService(hooksCfg);
+            teamManager.initAllHooks(helper);
+
+            getLogger().info("Team hooks reloaded. Registered: " + teamManager.getRegisteredHooks().size());
+        } catch (Throwable t) {
+            getLogger().warning("Error while reloading team hooks: " + t.getMessage());
+        }
     }
 
-    public com.blakube.bktops.plugin.service.team.TeamScoreService getTeamScoreService() {
-        return teamScoreService;
+    public TeamHandler getTeamManager() {
+        return teamManager;
     }
 
 }

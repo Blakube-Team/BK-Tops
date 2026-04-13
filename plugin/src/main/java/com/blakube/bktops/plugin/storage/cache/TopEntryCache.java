@@ -58,7 +58,7 @@ public final class TopEntryCache<K> {
 
             if (qualifies) {
                 working.add(new TopEntry<>(identifier, displayName, newValue, 0));
-                Collections.sort(working); // TopEntry.compareTo sorts value DESC
+                Collections.sort(working);
                 if (working.size() > maxSize) {
                     working = new ArrayList<>(working.subList(0, maxSize));
                 }
@@ -81,6 +81,41 @@ public final class TopEntryCache<K> {
             if (stateRef.compareAndSet(current, next)) {
                 return newIndex.getOrDefault(identifier, -1);
             }
+        }
+    }
+
+    @NotNull
+    public List<K> removeByDisplayName(@NotNull String displayName, @NotNull K keepIdentifier) {
+        while (true) {
+            State<K> current = stateRef.get();
+
+            List<K> staleIds = new ArrayList<>();
+            List<TopEntry<K>> working = new ArrayList<>(current.entries.size());
+            for (TopEntry<K> e : current.entries) {
+                if (e.getDisplayName().equals(displayName) && !e.getIdentifier().equals(keepIdentifier)) {
+                    staleIds.add(e.getIdentifier());
+                } else {
+                    working.add(e);
+                }
+            }
+
+            if (staleIds.isEmpty()) return Collections.emptyList();
+
+            List<TopEntry<K>>   finalList = new ArrayList<>(working.size());
+            HashMap<K, Integer> newIndex  = new HashMap<>(working.size() * 2);
+            for (int i = 0; i < working.size(); i++) {
+                TopEntry<K> e   = working.get(i);
+                int         pos = i + 1;
+                finalList.add(new TopEntry<>(e.getIdentifier(), e.getDisplayName(), e.getValue(), pos, e.getLastUpdated()));
+                newIndex.put(e.getIdentifier(), pos);
+            }
+
+            State<K> next = new State<>(
+                    Collections.unmodifiableList(finalList),
+                    Collections.unmodifiableMap(newIndex)
+            );
+
+            if (stateRef.compareAndSet(current, next)) return staleIds;
         }
     }
 

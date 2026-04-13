@@ -2,12 +2,10 @@ package com.blakube.bktops.plugin.hook.team.impl;
 
 import com.blakube.bktops.api.team.TeamHook;
 import com.blakube.bktops.plugin.service.team.TeamHookHelpService;
-import dev.kitteh.factions.FPlayer;
-import dev.kitteh.factions.FPlayers;
 import me.angeschossen.lands.api.LandsIntegration;
+import me.angeschossen.lands.api.player.LandPlayer;
 import org.bukkit.Bukkit;
 
-import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -41,22 +39,30 @@ public final class LandsHook implements TeamHook {
 
     @Override
     public Set<UUID> getTeamMembers(UUID anyTeamMember) {
-        var land = api.getLandPlayer(anyTeamMember).getOwningLand();
-        if(land != null) return land.getNation().getTrustedPlayers().stream().collect(Collectors.toSet());
-        return null;
+        LandPlayer landPlayer = api.getLandPlayer(anyTeamMember);
+        if (landPlayer == null) return Set.of();
+        var owningLand = landPlayer.getOwningLand();
+        if (owningLand == null) return Set.of();
+        var nation = owningLand.getNation();
+        if (nation != null) {
+            return nation.getTrustedPlayers().stream().collect(Collectors.toSet());
+        }
+        return owningLand.getTrustedPlayers().stream().collect(Collectors.toSet());
     }
 
     @Override
     public String getTeamDisplayName(UUID anyTeamMember) {
-        var land = api.getLandPlayer(anyTeamMember);
-        land.getOwningLand().getName();
-        return land.getName();
+        LandPlayer landPlayer = api.getLandPlayer(anyTeamMember);
+        if (landPlayer == null) return null;
+        var owningLand = landPlayer.getOwningLand();
+        if (owningLand == null) return null;
+        return owningLand.getName();
     }
 
     @Override
     public boolean isTeamMember(UUID uuid) {
-        var land = api.getLandPlayer(uuid);
-        return land != null;
+        LandPlayer landPlayer = api.getLandPlayer(uuid);
+        return landPlayer != null && landPlayer.getOwningLand() != null;
     }
 
     @Override

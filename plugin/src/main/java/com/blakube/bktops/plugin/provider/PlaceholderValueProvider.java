@@ -8,7 +8,6 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -24,14 +23,13 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
     private static final long DEFAULT_TTL_MILLIS = 500L;
     private static final int  MAX_CACHE_SIZE     = 10_000;
 
-    private final Map<UUID, CacheEntry> cache = Collections.synchronizedMap(
-            new LinkedHashMap<>(MAX_CACHE_SIZE, 0.75f, true /* access-order */) {
+    private final Map<UUID, CacheEntry> cache =
+            new LinkedHashMap<>(MAX_CACHE_SIZE, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(Map.Entry<UUID, CacheEntry> eldest) {
                     return size() > MAX_CACHE_SIZE;
                 }
-            }
-    );
+            };
     private volatile boolean recursionWarned = false;
 
     public PlaceholderValueProvider(@NotNull Plugin plugin, @NotNull String placeholder) {
