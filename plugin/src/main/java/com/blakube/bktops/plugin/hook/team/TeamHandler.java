@@ -13,21 +13,24 @@ public final class TeamHandler {
     private final List<TeamHook> hooks = new CopyOnWriteArrayList<>();
 
     public void initAllHooks(@NotNull com.blakube.bktops.plugin.service.team.TeamHookHelpService helper) {
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.LandsHook(helper));
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.SuperiorSkyblock2Hook(helper));
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.BentoBoxHook(helper));
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.UltimateClansHook(helper));
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.KingdomsXHook(helper));
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.TownyHook(helper));
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.FactionsUUIDHook(helper));
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.BetterTeamsHook(helper));
-        registerIfAvailable(new com.blakube.bktops.plugin.hook.team.impl.SimpleClansHook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.LandsHook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.SuperiorSkyblock2Hook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.BentoBoxHook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.UltimateClansHook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.KingdomsXHook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.TownyHook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.FactionsUUIDHook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.BetterTeamsHook(helper));
+        tryRegister(() -> new com.blakube.bktops.plugin.hook.team.impl.SimpleClansHook(helper));
     }
 
-    private void registerIfAvailable(@NotNull TeamHook hook) {
-        if (hook.isAvailable()) {
-            registerHook(hook);
-        }
+    private void tryRegister(java.util.function.Supplier<TeamHook> supplier) {
+        try {
+            TeamHook hook = supplier.get();
+            if (hook.isAvailable()) {
+                registerHook(hook);
+            }
+        } catch (Throwable ignored) {}
     }
 
     public void registerHook(@NotNull TeamHook hook) {

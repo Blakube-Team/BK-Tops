@@ -65,13 +65,15 @@ public final class DatabaseConnection {
             plugin.getLogger().info("H2 path: " + dbFile.getAbsolutePath());
         }
 
-        hikariConfig.setMaximumPoolSize(config.getInt("max-pool-size", 10));
-        hikariConfig.setMinimumIdle(config.getInt("minimum-idle", 2));
-        hikariConfig.setConnectionTimeout(config.getInt("connection-timeout", 30000));
-        hikariConfig.setIdleTimeout(config.getInt("idle-timeout", 600000));
-        hikariConfig.setMaxLifetime(config.getInt("max-lifetime", 1800000));
+        int threads = config.getInt("pool.threads", 1);
+        DatabaseExecutors.init(threads);
 
-        hikariConfig.setLeakDetectionThreshold(30_000);
+        hikariConfig.setMaximumPoolSize(config.getInt("pool.max-pool-size", threads));
+        hikariConfig.setMinimumIdle(config.getInt("pool.minimum-idle", 1));
+        hikariConfig.setConnectionTimeout(config.getInt("pool.connection-timeout", 30000));
+        hikariConfig.setIdleTimeout(config.getInt("pool.idle-timeout", 600000));
+        hikariConfig.setMaxLifetime(config.getInt("pool.max-lifetime", 1800000));
+        hikariConfig.setLeakDetectionThreshold(config.getInt("pool.leak-detection-threshold", 30000));
 
         if (driver.equals("mysql")) {
             hikariConfig.addDataSourceProperty("cachePrepStmts", "true");

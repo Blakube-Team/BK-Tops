@@ -167,7 +167,7 @@ public class BKTops extends JavaPlugin {
 
     private void initTops() {
         registry.clear();
-        TopFactory<UUID> factory = new DefaultTopFactory<>(new UUIDSerializer());
+        TopFactory<UUID> factory = new DefaultTopFactory<>(new UUIDSerializer(), this);
 
         TopLoader loader = new TopLoader(this, configService.provide(ConfigType.TOPS), factory, registry);
         loader.load();
@@ -182,6 +182,10 @@ public class BKTops extends JavaPlugin {
 
         if (NumberFormatterProvider.isAvailable()) {
             NumberFormatterProvider.getInstance().reload();
+        }
+
+        if (placeholderAPIHook != null) {
+            placeholderAPIHook.reload();
         }
 
         DatabaseExecutors.awaitPendingTasks();

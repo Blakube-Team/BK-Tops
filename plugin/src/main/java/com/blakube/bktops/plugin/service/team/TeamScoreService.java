@@ -14,7 +14,7 @@ public final class TeamScoreService {
     private final Plugin plugin;
     private final TeamHandler teamHandler;
     private final Map<String, PlaceholderValueProvider> providers = new ConcurrentHashMap<>();
-    // Small TTL caches to avoid hammering hooks and PAPI repeatedly within the same tick burst
+    
     private static final long MEMBERS_TTL_MILLIS = TimeUnit.SECONDS.toMillis(3);
     private static final long NAME_TTL_MILLIS = TimeUnit.SECONDS.toMillis(3);
     private final Map<UUID, TimedEntry<Set<UUID>>> membersCache = new ConcurrentHashMap<>();
@@ -35,7 +35,7 @@ public final class TeamScoreService {
         Set<UUID> members = new HashSet<>(membersOpt.get());
         if (members.isEmpty()) return Optional.empty();
 
-        // Allow hook to validate and filter members; if empty, fall back to original to avoid stubs killing values
+        
         Set<UUID> validated = teamHandler.validateTeamMembers(members);
         if (!validated.isEmpty()) {
             members = validated;
@@ -60,7 +60,7 @@ public final class TeamScoreService {
     }
 
     public Optional<String> getTeamName(@NotNull UUID anyMember) {
-        // Cached lookup
+        
         TimedEntry<String> te = nameCache.get(anyMember);
         long now = System.currentTimeMillis();
         if (te != null && (now - te.time) <= NAME_TTL_MILLIS) {
@@ -79,7 +79,7 @@ public final class TeamScoreService {
         }
 
         Optional<Set<UUID>> membersOpt = teamHandler.getTeamMembers(anyMember);
-        // Store even empty to avoid hammering for non-team players, but with short TTL
+        
         Set<UUID> toStore = membersOpt.map(HashSet::new).orElse(null);
         membersCache.put(anyMember, new TimedEntry<>(toStore, now));
         return membersOpt.map(Collections::unmodifiableSet);

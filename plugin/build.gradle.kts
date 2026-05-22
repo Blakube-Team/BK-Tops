@@ -4,6 +4,10 @@ plugins {
 }
 
 dependencies {
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT")
+    testImplementation("org.mockito:mockito-core:5.11.0")
     implementation(project(":api"))
 
     implementation("io.github.revxrsal:lamp.common:4.0.0-rc.12")
@@ -61,6 +65,9 @@ tasks {
             expand("version" to project.version)
             duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         }
+    }
+    test {
+        useJUnitPlatform()
     }
     build {
         dependsOn(shadowJar)

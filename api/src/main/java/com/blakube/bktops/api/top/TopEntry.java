@@ -4,9 +4,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-/**
- * Represents an entry in a leaderboard.
- */
 public final class TopEntry<K> implements Comparable<TopEntry<K>> {
 
     private final K identifier;

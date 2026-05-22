@@ -24,6 +24,9 @@ import com.blakube.bktops.plugin.storage.database.dao.SnapshotDAO;
 import com.blakube.bktops.plugin.storage.database.dao.TimedMetaDAO;
 import com.blakube.bktops.plugin.BKTops;
 import com.blakube.bktops.plugin.service.team.TeamScoreService;
+import org.bukkit.Bukkit;
+import org.bukkit.permissions.Permission;
+import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
@@ -122,6 +125,15 @@ public final class TopLoader implements Loader<TopRegistry<UUID>> {
             createTimedTop(topId, topConfig, baseProvider, nameResolver, storage, serializer);
         } else {
             createNormalTop(topId, topConfig, baseProvider, nameResolver, storage);
+        }
+
+        registerBypassPermission(topId);
+    }
+
+    private void registerBypassPermission(String topId) {
+        String node = "bktops.bypass." + topId;
+        if (Bukkit.getPluginManager().getPermission(node) == null) {
+            Bukkit.getPluginManager().addPermission(new Permission(node, PermissionDefault.FALSE));
         }
     }
 

@@ -19,7 +19,9 @@ public final class SimpleClansHook implements TeamHook {
     public SimpleClansHook(TeamHookHelpService helper) {
         this.available = helper.resolveAvailability("simple-clans", "SimpleClans");
         this.priority = helper.getPriority("simple-clans");
-        simpleClansAPI = SimpleClans.getInstance();
+        if (available) {
+            simpleClansAPI = SimpleClans.getInstance();
+        }
     }
 
     @Override

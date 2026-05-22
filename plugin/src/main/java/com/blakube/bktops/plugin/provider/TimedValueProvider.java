@@ -31,7 +31,7 @@ public final class TimedValueProvider<K> implements ValueProvider<K> {
         this.topId = Objects.requireNonNull(topId, "topId cannot be null");
         this.baseProvider = Objects.requireNonNull(baseProvider, "baseProvider cannot be null");
         this.snapshotDAO = Objects.requireNonNull(snapshotDAO, "snapshotDAO cannot be null");
-        // 10 seconds grace period after construction to allow dependent plugins/placeholders to stabilize
+        
         this.startupGraceUntil = System.currentTimeMillis() + 10_000L;
 
         this.initializationFuture = CompletableFuture.runAsync(() -> {

@@ -8,10 +8,11 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class PlaceholderValueProvider implements ValueProvider<UUID> {
 
@@ -20,17 +21,15 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
     private final Plugin papiPlugin;
     private final boolean hasRecursion;
 
-    private static final long DEFAULT_TTL_MILLIS = 500L;
+    
+    
+    private static final long DEFAULT_TTL_MILLIS = 2_000L;
     private static final int  MAX_CACHE_SIZE     = 10_000;
 
-    private final Map<UUID, CacheEntry> cache =
-            new LinkedHashMap<>(MAX_CACHE_SIZE, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<UUID, CacheEntry> eldest) {
-                    return size() > MAX_CACHE_SIZE;
-                }
-            };
-    private volatile boolean recursionWarned = false;
+    
+    private final ConcurrentHashMap<UUID, CacheEntry> cache = new ConcurrentHashMap<>(256);
+
+    private final java.util.concurrent.atomic.AtomicBoolean recursionWarned = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public PlaceholderValueProvider(@NotNull Plugin plugin, @NotNull String placeholder) {
         this.plugin      = Objects.requireNonNull(plugin,      "plugin");
@@ -47,8 +46,7 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
         if (papiPlugin == null || !papiPlugin.isEnabled()) return null;
 
         if (hasRecursion) {
-            if (!recursionWarned) {
-                recursionWarned = true;
+            if (recursionWarned.compareAndSet(false, true)) {
                 plugin.getLogger().warning("[BK-Tops] Detected BK-Tops placeholder configured as provider ("
                         + placeholder + "). This causes recursion and zeros. "
                         + "Please use a base placeholder (e.g., Vault balance) instead.");
@@ -70,16 +68,24 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
             if (str.isEmpty()) return null;
 
             Double parsed = parseNumeric(str);
-            if (parsed != null) putCache(identifier, parsed, now);
+            if (parsed != null) {
+                if (cache.size() >= MAX_CACHE_SIZE) evictExpired(now);
+                cache.put(identifier, new CacheEntry(parsed, now));
+            }
             return parsed;
         } catch (NumberFormatException e) {
             return null;
         }
     }
 
-    private void putCache(UUID id, double value, long now) {
-        cache.put(id, new CacheEntry(value, now));
+    private void evictExpired(long now) {
+        cache.entrySet().removeIf(e -> (now - e.getValue().time) > DEFAULT_TTL_MILLIS);
     }
+
+    private static final Pattern TIME_UNIT_TRIGGER = Pattern.compile("\\d+\\s*[dDhH]");
+    private static final Pattern TIME_UNIT_FULL    = Pattern.compile(
+            "^\\s*(?:(\\d+)\\s*[dD]\\s*)?(?:(\\d+)\\s*[hH]\\s*)?(?:(\\d+)\\s*[mM]\\s*)?(?:(\\d+)\\s*[sS])?\\s*$"
+    );
 
     private static Double parseNumeric(String s) {
         if (s.contains(":")) {
@@ -96,6 +102,18 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
                 }
                 return (double) seconds;
             } catch (NumberFormatException ignored) {
+            }
+        }
+
+        if (TIME_UNIT_TRIGGER.matcher(s).find()) {
+            Matcher m = TIME_UNIT_FULL.matcher(s);
+            if (m.matches()) {
+                long seconds = 0;
+                if (m.group(1) != null) seconds += Long.parseLong(m.group(1)) * 86_400;
+                if (m.group(2) != null) seconds += Long.parseLong(m.group(2)) * 3_600;
+                if (m.group(3) != null) seconds += Long.parseLong(m.group(3)) * 60;
+                if (m.group(4) != null) seconds += Long.parseLong(m.group(4));
+                return (double) seconds;
             }
         }
 
@@ -121,6 +139,7 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
 
         s = s.replaceAll("[^0-9eE+\\-\\.]", "");
         if (s.isEmpty() || s.equals("-") || s.equals("+")) return null;
+        if (!s.chars().anyMatch(Character::isDigit)) return null;
 
         double base = Double.parseDouble(s);
         double val  = base * multiplier;

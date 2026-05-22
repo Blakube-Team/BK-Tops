@@ -179,16 +179,10 @@ public final class TopStorageDAO<K> {
     }
 
     private String buildUpsertSql() {
-        boolean isMySql = "mysql".equalsIgnoreCase(DatabaseConnection.getDriver());
-        if (isMySql) {
-            return String.format(
-                    "INSERT INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?) " +
-                    "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), " +
-                    "top_value = VALUES(top_value), last_updated = VALUES(last_updated)",
-                    tableName);
-        }
         return String.format(
-                "MERGE INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?)",
+                "INSERT INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), " +
+                "top_value = VALUES(top_value), last_updated = VALUES(last_updated)",
                 tableName);
     }
 
@@ -200,21 +194,12 @@ public final class TopStorageDAO<K> {
     }
 
     public boolean save(@NotNull K identifier, @NotNull String displayName, double value) {
-        boolean isMySql = "mysql".equalsIgnoreCase(DatabaseConnection.getDriver());
-        String sql;
-
-        if (isMySql) {
-            sql = String.format(
-                    "INSERT INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?) " +
-                            "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), top_value = VALUES(top_value), last_updated = VALUES(last_updated)",
-                    tableName
-            );
-        } else {
-            sql = String.format(
-                    "MERGE INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?)",
-                    tableName
-            );
-        }
+        String sql = String.format(
+                "INSERT INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), " +
+                "top_value = VALUES(top_value), last_updated = VALUES(last_updated)",
+                tableName
+        );
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -245,21 +230,12 @@ public final class TopStorageDAO<K> {
             return;
         }
 
-        boolean isMySql = "mysql".equalsIgnoreCase(DatabaseConnection.getDriver());
-        String sql;
-
-        if (isMySql) {
-            sql = String.format(
-                    "INSERT INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?) " +
-                            "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), top_value = VALUES(top_value), last_updated = VALUES(last_updated)",
-                    tableName
-            );
-        } else {
-            sql = String.format(
-                    "MERGE INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?)",
-                    tableName
-            );
-        }
+        String sql = String.format(
+                "INSERT INTO %s (identifier, display_name, top_value, last_updated) VALUES (?, ?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), " +
+                "top_value = VALUES(top_value), last_updated = VALUES(last_updated)",
+                tableName
+        );
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {

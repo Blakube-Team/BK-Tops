@@ -13,8 +13,10 @@ import com.blakube.bktops.plugin.condition.ConditionEvaluator;
 import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
 import com.blakube.bktops.plugin.storage.database.dao.TopStorageDAO;
 import com.blakube.bktops.plugin.storage.wrapper.TopStorageImpl;
+import com.blakube.bktops.api.config.ConfigType;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -27,33 +29,38 @@ import java.util.function.Consumer;
 
 public final class DefaultTopProcessor<K> implements TopProcessor<K> {
 
+    private final JavaPlugin plugin;
     private final String topId;
     private final TopConfig config;
     private final ValueProvider<K> valueProvider;
     private final NameResolver<K> nameResolver;
     private final TopStorage<K> storage;
     private final ProcessingQueue<K> queue;
-    private final Consumer<UpdateResult<K>> resultConsumer;
+    private final Consumer<List<UpdateResult<K>>> batchResultConsumer;
     private final Consumer<K> entryRemover;
     private final AtomicBoolean enabled;
+    private final boolean debug;
 
-    public DefaultTopProcessor(@NotNull String topId,
+    public DefaultTopProcessor(@NotNull JavaPlugin plugin,
+                               @NotNull String topId,
                                @NotNull TopConfig config,
                                @NotNull ValueProvider<K> valueProvider,
                                @NotNull NameResolver<K> nameResolver,
                                @NotNull TopStorage<K> storage,
                                @NotNull ProcessingQueue<K> queue,
-                               @NotNull Consumer<UpdateResult<K>> resultConsumer,
+                               @NotNull Consumer<List<UpdateResult<K>>> batchResultConsumer,
                                @NotNull Consumer<K> entryRemover) {
-        this.topId          = Objects.requireNonNull(topId,          "topId cannot be null");
-        this.config         = Objects.requireNonNull(config,         "config cannot be null");
-        this.valueProvider  = Objects.requireNonNull(valueProvider,  "valueProvider cannot be null");
-        this.nameResolver   = Objects.requireNonNull(nameResolver,   "nameResolver cannot be null");
-        this.storage        = Objects.requireNonNull(storage,        "storage cannot be null");
-        this.queue          = Objects.requireNonNull(queue,          "queue cannot be null");
-        this.resultConsumer = Objects.requireNonNull(resultConsumer, "resultConsumer cannot be null");
-        this.entryRemover   = Objects.requireNonNull(entryRemover,   "entryRemover cannot be null");
-        this.enabled        = new AtomicBoolean(true);
+        this.plugin              = Objects.requireNonNull(plugin,              "plugin cannot be null");
+        this.topId               = Objects.requireNonNull(topId,               "topId cannot be null");
+        this.config              = Objects.requireNonNull(config,              "config cannot be null");
+        this.valueProvider       = Objects.requireNonNull(valueProvider,       "valueProvider cannot be null");
+        this.nameResolver        = Objects.requireNonNull(nameResolver,        "nameResolver cannot be null");
+        this.storage             = Objects.requireNonNull(storage,             "storage cannot be null");
+        this.queue               = Objects.requireNonNull(queue,               "queue cannot be null");
+        this.batchResultConsumer = Objects.requireNonNull(batchResultConsumer, "batchResultConsumer cannot be null");
+        this.entryRemover        = Objects.requireNonNull(entryRemover,        "entryRemover cannot be null");
+        this.enabled             = new AtomicBoolean(true);
+        this.debug               = plugin.getConfig().getBoolean("debug", false);
     }
 
     @Override
@@ -68,70 +75,101 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
     }
 
     private void processBatchOptimized(@NotNull List<QueueEntry<K>> entries) {
-        record Resolved<K>(K identifier, String displayName, double value) {}
+        if (Bukkit.isPrimaryThread()) {
+            List<PreResolved<K>> preResolved = collectValues(entries);
+            if (preResolved.isEmpty()) return;
+            CompletableFuture
+                    .runAsync(() -> dispatchPhase2(preResolved), DatabaseExecutors.DB_EXECUTOR)
+                    .exceptionally(ex -> {
+                        plugin.getLogger().warning("[BK-Tops] Batch error: " + ex.getMessage());
+                        return null;
+                    });
+        } else {
+            if (!plugin.isEnabled()) return;
+            CompletableFuture<List<PreResolved<K>>> collectFuture = new CompletableFuture<>();
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                try {
+                    collectFuture.complete(collectValues(entries));
+                } catch (Throwable t) {
+                    collectFuture.completeExceptionally(t);
+                }
+            });
+            collectFuture
+                    .thenAcceptAsync(preResolved -> {
+                        if (!preResolved.isEmpty()) dispatchPhase2(preResolved);
+                    }, DatabaseExecutors.DB_EXECUTOR)
+                    .exceptionally(ex -> {
+                        plugin.getLogger().warning("[BK-Tops] Batch error: " + ex.getMessage());
+                        return null;
+                    });
+        }
+    }
 
-        List<Resolved<K>> resolved = new ArrayList<>(entries.size());
+    private List<PreResolved<K>> collectValues(@NotNull List<QueueEntry<K>> entries) {
+        List<PreResolved<K>> preResolved = new ArrayList<>(entries.size());
+        boolean isPlayerTop = nameResolver instanceof com.blakube.bktops.plugin.resolver.PlayerNameResolver;
 
         for (QueueEntry<K> entry : entries) {
             K identifier = entry.getIdentifier();
-            if (shouldBypass(identifier)) continue;
+            if (shouldBypass(identifier)) {
+                if (debug) plugin.getLogger().info("[BK-Tops] [DEBUG] Skipping " + identifier + " for " + topId + " (Bypass permission)");
+                continue;
+            }
 
-            if (!config.getConditionSet().isEmpty() && identifier instanceof UUID uuid) {
+            if (isPlayerTop && !config.getConditionSet().isEmpty() && identifier instanceof UUID uuid) {
                 if (!ConditionEvaluator.passes(config.getConditionSet(), uuid)) {
+                    if (debug) plugin.getLogger().info("[BK-Tops] [DEBUG] Skipping " + identifier + " for " + topId + " (Failed conditions)");
                     entryRemover.accept(identifier);
                     continue;
                 }
             }
 
-            String displayName = nameResolver.resolve(identifier);
-            if (displayName == null) {
-                resultConsumer.accept(UpdateResult.failure(identifier, "Failed to resolve display name"));
-                continue;
-            }
-
             Double value = valueProvider.getValue(identifier);
             if (value == null) {
-                resultConsumer.accept(UpdateResult.failure(identifier, "Failed to get value from provider"));
+                if (debug) plugin.getLogger().info("[BK-Tops] [DEBUG] Skipping " + identifier + " for " + topId + " (Null value)");
+                continue;
+            }
+            if (value == 0.0 && !config.isAllowZeroValues()) {
+                if (debug) plugin.getLogger().info("[BK-Tops] [DEBUG] Skipping " + identifier + " for " + topId + " (Zero value)");
                 continue;
             }
 
-            if (value == 0.0) continue;
-
-            resolved.add(new Resolved<>(identifier, displayName, value));
+            preResolved.add(new PreResolved<>(identifier, value));
         }
-
-        if (resolved.isEmpty()) return;
-
-        CompletableFuture
-                .runAsync(() -> {
-                    if (storage instanceof TopStorageImpl<K> impl) {
-                        List<TopStorageDAO.BatchEntry<K>> batch = new ArrayList<>(resolved.size());
-                        for (Resolved<K> r : resolved) {
-                            batch.add(new TopStorageDAO.BatchEntry<>(r.identifier(), r.displayName(), r.value()));
-                        }
-                        impl.saveBatch(batch, config.getSize());
-                    } else {
-                        for (Resolved<K> r : resolved) {
-                            storage.save(topId, r.identifier(), r.displayName(), r.value(), config.getSize());
-                        }
-                    }
-                }, DatabaseExecutors.DB_EXECUTOR)
-                .thenRun(() -> {
-                    for (Resolved<K> r : resolved) {
-                        resultConsumer.accept(UpdateResult.success(
-                                r.identifier(), r.displayName(), null, r.value(), null, null));
-                    }
-                })
-                .exceptionally(ex -> {
-                    for (Resolved<K> r : resolved) {
-                        resultConsumer.accept(UpdateResult.failure(r.identifier(),
-                                "Batch error: " + ex.getMessage()));
-                    }
-                    return null;
-                });
+        return preResolved;
     }
 
-@Override
+    private void dispatchPhase2(@NotNull List<PreResolved<K>> preResolved) {
+        record Resolved<K>(K identifier, String displayName, double value) {}
+
+        List<Resolved<K>> resolved = new ArrayList<>(preResolved.size());
+        for (PreResolved<K> pre : preResolved) {
+            String displayName = nameResolver.resolve(pre.identifier());
+            if (displayName == null) continue;
+            resolved.add(new Resolved<>(pre.identifier(), displayName, pre.value()));
+        }
+        if (resolved.isEmpty()) return;
+
+        if (storage instanceof TopStorageImpl<K> impl) {
+            List<TopStorageDAO.BatchEntry<K>> batch = new ArrayList<>(resolved.size());
+            for (Resolved<K> r : resolved) {
+                batch.add(new TopStorageDAO.BatchEntry<>(r.identifier(), r.displayName(), r.value()));
+            }
+            impl.saveBatch(batch, config.getSize());
+        } else {
+            for (Resolved<K> r : resolved) {
+                storage.save(topId, r.identifier(), r.displayName(), r.value(), config.getSize());
+            }
+        }
+
+        List<UpdateResult<K>> results = new ArrayList<>(resolved.size());
+        for (Resolved<K> r : resolved) {
+            results.add(UpdateResult.success(r.identifier(), r.displayName(), null, r.value(), null, null));
+        }
+        batchResultConsumer.accept(results);
+    }
+
+    @Override
     public void processImmediate(@NotNull K identifier, @NotNull String reason) {
         Objects.requireNonNull(identifier, "identifier cannot be null");
         Objects.requireNonNull(reason,     "reason cannot be null");
@@ -151,4 +189,6 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
 
     @Override
     public void setEnabled(boolean enabled) { this.enabled.set(enabled); }
+
+    private record PreResolved<K>(K identifier, double value) {}
 }

@@ -7,9 +7,6 @@ import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Central dispatcher for BK-Tops API events. Addons can listen to these Bukkit events.
- */
 public final class TopEventDispatcher {
 
     private TopEventDispatcher() {}

@@ -4,9 +4,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-/**
- * Represents an entry in a processing queue.
- */
 public final class QueueEntry<K> {
 
     private final K identifier;

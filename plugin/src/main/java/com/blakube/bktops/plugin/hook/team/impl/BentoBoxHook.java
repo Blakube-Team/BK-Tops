@@ -24,6 +24,8 @@ public final class BentoBoxHook implements TeamHook {
     public BentoBoxHook(TeamHookHelpService helper) {
         this.available = helper.resolveAvailability("bento-box", "BentoBox", "BSkyBlock");
         this.priority = helper.getPriority("bento-box");
+        if (!available) return;
+
         this.bentoBox = BentoBox.getInstance();
         if (this.bentoBox == null) return;
 
@@ -94,7 +96,6 @@ public final class BentoBoxHook implements TeamHook {
                 .filter(this::isPlayerInAnyTeam)
                 .collect(Collectors.toSet());
     }
-
 
     private Optional<Island> getPlayerIsland(UUID playerId) {
         if (!isAvailable() || playerId == null) return Optional.empty();

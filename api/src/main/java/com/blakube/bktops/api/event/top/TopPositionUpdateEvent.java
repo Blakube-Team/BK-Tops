@@ -5,10 +5,6 @@ import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Fired when an entry's position within a top changes.
- * This event may be called asynchronously.
- */
 public class TopPositionUpdateEvent extends Event {
 
     private static final HandlerList HANDLERS = new HandlerList();

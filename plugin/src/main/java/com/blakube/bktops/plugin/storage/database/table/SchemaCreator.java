@@ -66,7 +66,6 @@ public final class SchemaCreator {
 
             stmt.executeUpdate(sql);
 
-
             String indexSql = "CREATE INDEX IF NOT EXISTS idx_" +
                     sanitizeTableName(topId) + "_snapshot_date ON " +
                     tableName + "(snapshot_date DESC)";

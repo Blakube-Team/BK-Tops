@@ -6,9 +6,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collection;
 import java.util.Optional;
 
-/**
- * Registry for managing multiple leaderboards.
- */
 public interface TopRegistry<K> {
 
     void register(@NotNull Top<K> top);

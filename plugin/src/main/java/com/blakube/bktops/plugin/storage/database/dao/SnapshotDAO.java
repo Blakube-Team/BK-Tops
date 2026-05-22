@@ -79,7 +79,6 @@ public final class SnapshotDAO<K> {
             return;
         }
 
-
         boolean isMySql = "mysql".equalsIgnoreCase(DatabaseConnection.getDriver());
         String sql;
 
@@ -105,7 +104,6 @@ public final class SnapshotDAO<K> {
                 String serializedId = serializer.serialize(entry.getKey());
                 double value = entry.getValue();
 
-
                 stmt.setString(1, serializedId);
                 stmt.setDouble(2, value);
                 stmt.setLong(3, now);
@@ -129,7 +127,6 @@ public final class SnapshotDAO<K> {
         Map<K, Double> snapshots = new HashMap<>();
 
         String sql = String.format("SELECT identifier, snapshot_value FROM %s", tableName);
-
 
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();

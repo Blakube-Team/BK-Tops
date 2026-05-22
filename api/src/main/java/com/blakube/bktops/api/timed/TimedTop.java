@@ -5,9 +5,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.time.Duration;
 
-/**
- * Represents a timed leaderboard that resets periodically.
- */
 public interface TimedTop<K> extends Top<K> {
 
     @NotNull

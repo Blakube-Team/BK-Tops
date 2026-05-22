@@ -1,8 +1,5 @@
 package com.blakube.bktops.api.queue;
 
-/**
- * Priority levels for queue processing.
- */
 public enum Priority {
     CRITICAL(0),
     HIGH(1),

@@ -13,6 +13,8 @@ import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
 import com.blakube.bktops.plugin.storage.database.dao.SnapshotDAO;
 import com.blakube.bktops.plugin.storage.database.dao.TimedMetaDAO;
 import com.blakube.bktops.plugin.schedule.CronExpression;
+import org.bukkit.Bukkit;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.Duration;
@@ -32,17 +34,18 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
     private final SnapshotDAO<K> snapshotDAO;
     private TimedMetaDAO metaDAO;
     private String cronExpression;
-    private long nextResetTime;
-    private long startTime;
+    private volatile long nextResetTime;
+    private volatile long startTime;
 
-    public DefaultTimedTop(@NotNull String id,
+    public DefaultTimedTop(@NotNull JavaPlugin plugin,
+                           @NotNull String id,
                            @NotNull TopConfig config,
                            @NotNull ValueProvider<K> valueProvider,
                            @NotNull NameResolver<K> nameResolver,
                            @NotNull TopStorage<K> storage,
                            @NotNull ResetSchedule resetSchedule,
                            @NotNull SnapshotDAO<K> snapshotDAO) {
-        super(id, config, valueProvider, nameResolver, storage);
+        super(plugin, id, config, valueProvider, nameResolver, storage);
         this.resetSchedule = Objects.requireNonNull(resetSchedule, "resetSchedule cannot be null");
         this.snapshotDAO = Objects.requireNonNull(snapshotDAO, "snapshotDAO cannot be null");
         this.startTime = System.currentTimeMillis();
@@ -59,6 +62,11 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
                     if (meta != null) {
                         this.startTime = meta.getStartTime();
                         this.nextResetTime = meta.getNextResetTime();
+
+                        if (System.currentTimeMillis() >= this.nextResetTime) {
+                            plugin.getLogger().info("[BK-Tops] Catch-up reset detected for " + id + ". Resetting now...");
+                            resetAsync();
+                        }
                     } else {
                         long now = System.currentTimeMillis();
                         this.startTime = now;
@@ -106,12 +114,23 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
     }
 
     public CompletableFuture<Void> resetAsync() {
-        Map<K, Double> snapshots = collectCurrentSnapshots();
-
         cache.setEntries(Collections.emptyList());
         queue.clear();
 
-        return CompletableFuture.runAsync(() -> {
+        CompletableFuture<Map<K, Double>> snapshotFuture = new CompletableFuture<>();
+        if (Bukkit.isPrimaryThread()) {
+            snapshotFuture.complete(collectCurrentSnapshots());
+        } else {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                try {
+                    snapshotFuture.complete(collectCurrentSnapshots());
+                } catch (Throwable t) {
+                    snapshotFuture.completeExceptionally(t);
+                }
+            });
+        }
+
+        return snapshotFuture.thenComposeAsync(snapshots -> {
             try {
                 if (!snapshots.isEmpty() && valueProvider instanceof TimedValueProvider) {
                     @SuppressWarnings("unchecked")
@@ -122,25 +141,32 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
                 storage.clear(id);
 
                 long previousStart = this.startTime;
-                this.startTime = System.currentTimeMillis();
+                this.startTime     = System.currentTimeMillis();
                 this.nextResetTime = calculateNextResetTime();
 
                 if (this.metaDAO != null) {
                     this.metaDAO.save(this.startTime, this.nextResetTime, previousStart);
                 }
 
-                TopEventDispatcher.fireTimedReset(
-                        id,
-                        resetSchedule.getType(),
-                        previousStart,
-                        this.startTime,
-                        this.nextResetTime
+                final long fPreviousStart = previousStart;
+                final long fStartTime     = this.startTime;
+                final long fNextReset     = this.nextResetTime;
+
+                Bukkit.getScheduler().runTask(plugin, () ->
+                        TopEventDispatcher.fireTimedReset(
+                                id,
+                                resetSchedule.getType(),
+                                fPreviousStart,
+                                fStartTime,
+                                fNextReset
+                        )
                 );
 
             } catch (Exception e) {
-                System.err.println("[BK-Tops] Error during reset of " + id + ": " + e.getMessage());
+                plugin.getLogger().severe("[BK-Tops] Error during reset of " + id + ": " + e.getMessage());
                 e.printStackTrace();
             }
+            return CompletableFuture.<Void>completedFuture(null);
         }, DatabaseExecutors.DB_EXECUTOR);
     }
 

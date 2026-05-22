@@ -14,7 +14,7 @@ public class NotifyService {
     private final MessageParser parser;
     private final MessageRepository repository;
 
-    // Default durations for titles
+    
     private final Duration fadeIn = Duration.ofMillis(500);
     private final Duration stay = Duration.ofSeconds(3);
     private final Duration fadeOut = Duration.ofMillis(500);

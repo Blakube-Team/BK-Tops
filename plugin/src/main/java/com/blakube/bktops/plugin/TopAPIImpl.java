@@ -18,6 +18,10 @@ public final class TopAPIImpl implements TopAPI {
         this.registry = registry;
     }
 
+    public @NotNull TopRegistry<java.util.UUID> getRegistry() {
+        return registry;
+    }
+
     @Override
     public @Nullable Top getTop(@NotNull String id) {
         return registry.get(id).orElse(null);

@@ -11,9 +11,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Represents a leaderboard.
- */
 public interface Top<K> {
 
     @NotNull

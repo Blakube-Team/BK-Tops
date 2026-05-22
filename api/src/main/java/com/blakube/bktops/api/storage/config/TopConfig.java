@@ -12,10 +12,13 @@ public final class TopConfig {
     private final int onlineQueueInterval;
     private final boolean enableRotativeQueue;
     private final int rotativeQueueSize;
+    private final int rotativeQueueInterval;
     private final int batchSize;
     private final int tickDelay;
     private final String displayName;
     private final ConditionSet conditionSet;
+    private final String valueFormat;
+    private final boolean allowZeroValues;
 
     private TopConfig(@NotNull Builder builder) {
         this.size = builder.size;
@@ -23,10 +26,13 @@ public final class TopConfig {
         this.onlineQueueInterval = builder.onlineQueueInterval;
         this.enableRotativeQueue = builder.enableRotativeQueue;
         this.rotativeQueueSize = builder.rotativeQueueSize;
+        this.rotativeQueueInterval = builder.rotativeQueueInterval;
         this.batchSize = builder.batchSize;
         this.tickDelay = builder.tickDelay;
         this.displayName = builder.displayName;
         this.conditionSet = builder.conditionSet;
+        this.valueFormat = builder.valueFormat;
+        this.allowZeroValues = builder.allowZeroValues;
     }
 
     public int getSize() {
@@ -36,6 +42,11 @@ public final class TopConfig {
     @Nullable
     public String getDisplayName() {
         return displayName;
+    }
+
+    @Nullable
+    public String getValueFormat() {
+        return valueFormat;
     }
 
     @NotNull
@@ -59,12 +70,20 @@ public final class TopConfig {
         return rotativeQueueSize;
     }
 
+    public int getRotativeQueueInterval() {
+        return rotativeQueueInterval;
+    }
+
     public int getBatchSize() {
         return batchSize;
     }
 
     public int getTickDelay() {
         return tickDelay;
+    }
+
+    public boolean isAllowZeroValues() {
+        return allowZeroValues;
     }
 
     @NotNull
@@ -74,14 +93,17 @@ public final class TopConfig {
 
     public static final class Builder {
         private int size = 10;
-        private boolean enableOnlineQueue = true;
-        private int onlineQueueInterval = 100;
-        private boolean enableRotativeQueue = true;
-        private int rotativeQueueSize = 50;
-        private int batchSize = 10;
-        private int tickDelay = 1;
+        private boolean enableOnlineQueue = false;
+        private int onlineQueueInterval = 288000;
+        private boolean enableRotativeQueue = false;
+        private int rotativeQueueSize = 20;
+        private int rotativeQueueInterval = 288000;
+        private int batchSize = 5;
+        private int tickDelay = 20;
         private String displayName = null;
         private ConditionSet conditionSet = EMPTY;
+        private String valueFormat = null;
+        private boolean allowZeroValues = false;
 
         private Builder() {
         }
@@ -126,6 +148,15 @@ public final class TopConfig {
         }
 
         @NotNull
+        public Builder rotativeQueueInterval(int interval) {
+            if (interval <= 0) {
+                throw new IllegalArgumentException("rotativeQueueInterval must be positive");
+            }
+            this.rotativeQueueInterval = interval;
+            return this;
+        }
+
+        @NotNull
         public Builder batchSize(int size) {
             if (size <= 0) {
                 throw new IllegalArgumentException("batchSize must be positive");
@@ -152,6 +183,18 @@ public final class TopConfig {
         @NotNull
         public Builder conditionSet(@NotNull ConditionSet conditionSet) {
             this.conditionSet = conditionSet;
+            return this;
+        }
+
+        @NotNull
+        public Builder valueFormat(@Nullable String valueFormat) {
+            this.valueFormat = valueFormat;
+            return this;
+        }
+
+        @NotNull
+        public Builder allowZeroValues(boolean allow) {
+            this.allowZeroValues = allow;
             return this;
         }
 

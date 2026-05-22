@@ -5,9 +5,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collection;
 import java.util.List;
 
-/**
- * Queue for processing identifiers with priority support.
- */
 public interface ProcessingQueue<K> {
 
     boolean enqueue(@NotNull K identifier,

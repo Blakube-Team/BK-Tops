@@ -3,6 +3,7 @@ package com.blakube.bktops.plugin.schedule;
 import com.blakube.bktops.api.queue.Priority;
 import com.blakube.bktops.api.registry.TopRegistry;
 import com.blakube.bktops.api.top.Top;
+import com.blakube.bktops.plugin.cache.PlayerNameCache;
 import com.blakube.bktops.plugin.provider.TimedValueProvider;
 import com.blakube.bktops.plugin.top.DefaultTimedTop;
 import org.bukkit.Bukkit;
@@ -14,6 +15,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class ProcessorScheduler {
 
@@ -21,7 +23,8 @@ public final class ProcessorScheduler {
     private final TopRegistry<UUID> registry;
     private final List<BukkitTask> tasks;
 
-    private final Map<String, Integer> rotativeOffset = new HashMap<>();
+    
+    private final Map<String, Integer> rotativeOffset = new ConcurrentHashMap<>();
 
     public ProcessorScheduler(@NotNull JavaPlugin plugin, @NotNull TopRegistry<UUID> registry) {
         this.plugin   = plugin;
@@ -32,7 +35,7 @@ public final class ProcessorScheduler {
     public void start() {
         plugin.getLogger().info("Initializing processor scheduler...");
 
-        List<CompletableFuture<Void>> futures       = new ArrayList<>();
+        List<CompletableFuture<Void>> futures        = new ArrayList<>();
         List<TimedValueProvider<UUID>> timedProviders = new ArrayList<>();
 
         for (Top<UUID> top : registry.getAll()) {
@@ -59,13 +62,29 @@ public final class ProcessorScheduler {
     private void startTasks(List<TimedValueProvider<UUID>> timedProviders) {
         plugin.getLogger().info("All providers initialized! Starting tasks...");
 
+        
+        
+        List<UUID> onlineUUIDs = new ArrayList<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            PlayerNameCache.put(player.getUniqueId(), player.getName());
+            onlineUUIDs.add(player.getUniqueId());
+        }
+
         for (Top<UUID> top : registry.getAll()) {
+            if (!onlineUUIDs.isEmpty()) {
+                top.enqueue(onlineUUIDs, Priority.HIGH, "online_at_startup");
+            }
+
             if (top.getValueProvider() instanceof TimedValueProvider<UUID> provider) {
                 Map<UUID, Double> snapshots = provider.getSnapshotCache();
                 if (!snapshots.isEmpty()) {
                     top.enqueue(new ArrayList<>(snapshots.keySet()), Priority.HIGH, "server_startup");
                 }
             }
+        }
+
+        if (!onlineUUIDs.isEmpty()) {
+            plugin.getLogger().info("Enqueued " + onlineUUIDs.size() + " online player(s) for startup processing.");
         }
 
         startMainProcessor();
@@ -85,13 +104,15 @@ public final class ProcessorScheduler {
     private void startMainProcessor() {
         for (Top<UUID> top : registry.getAll()) {
             int period = Math.max(1, top.getConfig().getTickDelay());
+            
+            
             BukkitTask task = new BukkitRunnable() {
                 @Override
                 public void run() {
                     if (!top.getProcessor().isEnabled()) return;
                     top.getProcessor().processBatch(top.getConfig().getBatchSize());
                 }
-            }.runTaskTimer(plugin, 0L, period);
+            }.runTaskTimerAsynchronously(plugin, 0L, period);
             tasks.add(task);
         }
     }
@@ -100,6 +121,7 @@ public final class ProcessorScheduler {
         for (Top<UUID> top : registry.getAll()) {
             if (!top.getConfig().isEnableOnlineQueue()) continue;
             int period = Math.max(1, top.getConfig().getOnlineQueueInterval());
+            
             BukkitTask task = new BukkitRunnable() {
                 @Override
                 public void run() {
@@ -118,32 +140,39 @@ public final class ProcessorScheduler {
         for (Top<UUID> top : registry.getAll()) {
             if (!top.getConfig().isEnableRotativeQueue()) continue;
             rotativeOffset.put(top.getId(), 0);
+            int period = Math.max(1, top.getConfig().getRotativeQueueInterval());
+            
             BukkitTask task = new BukkitRunnable() {
                 @Override
                 public void run() {
-                    var entries = top.getEntries();
+                    List<?> entries = top.getEntries();
                     if (entries.isEmpty()) return;
 
-                    String id     = top.getId();
+                    String topId  = top.getId();
                     int maxSize   = Math.min(top.getConfig().getRotativeQueueSize(), entries.size());
-                    int offset    = rotativeOffset.getOrDefault(id, 0);
-                    int batchSize = 10;
+                    int offset    = rotativeOffset.getOrDefault(topId, 0);
+                    int batchSize = top.getConfig().getBatchSize();
 
                     List<UUID> toEnqueue = new ArrayList<>(batchSize);
                     for (int i = 0; i < batchSize && offset < maxSize; i++, offset++) {
-                        toEnqueue.add(entries.get(offset).getIdentifier());
+                        @SuppressWarnings("unchecked")
+                        com.blakube.bktops.api.top.TopEntry<UUID> entry =
+                                (com.blakube.bktops.api.top.TopEntry<UUID>) entries.get(offset);
+                        toEnqueue.add(entry.getIdentifier());
                     }
                     if (!toEnqueue.isEmpty()) {
                         top.enqueue(toEnqueue, Priority.MEDIUM, "rotative_check");
                     }
-                    rotativeOffset.put(id, offset >= maxSize ? 0 : offset);
+                    rotativeOffset.put(topId, offset >= maxSize ? 0 : offset);
                 }
-            }.runTaskTimer(plugin, 40L, 40L);
+            }.runTaskTimerAsynchronously(plugin, 40L, period);
             tasks.add(task);
         }
     }
 
     private void startTimedResetTask() {
+        
+        
         BukkitTask task = new BukkitRunnable() {
             @Override
             public void run() {
@@ -162,7 +191,7 @@ public final class ProcessorScheduler {
                             });
                 }
             }
-        }.runTaskTimer(plugin, 1200L, 1200L);
+        }.runTaskTimerAsynchronously(plugin, 1200L, 1200L);
 
         tasks.add(task);
     }

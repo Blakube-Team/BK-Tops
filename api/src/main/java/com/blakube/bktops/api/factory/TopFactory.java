@@ -9,9 +9,6 @@ import com.blakube.bktops.api.timed.TimedTop;
 import com.blakube.bktops.api.top.Top;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Factory for creating leaderboard instances.
- */
 public interface TopFactory<K> {
 
     @NotNull

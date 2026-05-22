@@ -5,10 +5,6 @@ import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Fired when a timed top resets.
- * This event may be called asynchronously.
- */
 public class TimedTopResetEvent extends Event {
 
     private static final HandlerList HANDLERS = new HandlerList();

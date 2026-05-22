@@ -5,9 +5,6 @@ import org.jetbrains.annotations.NotNull;
 import java.time.Duration;
 import java.util.Objects;
 
-/**
- * Defines when a timed leaderboard should reset.
- */
 public final class ResetSchedule {
 
     private final Type type;

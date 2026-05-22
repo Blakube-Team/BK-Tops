@@ -13,6 +13,7 @@ import com.blakube.bktops.plugin.storage.database.dao.TopStorageDAO;
 import com.blakube.bktops.plugin.provider.TimedValueProvider;
 import com.blakube.bktops.plugin.top.DefaultTimedTop;
 import com.blakube.bktops.plugin.top.DefaultTop;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -20,53 +21,56 @@ import java.util.Objects;
 public final class DefaultTopFactory<K> implements TopFactory<K> {
 
     private final TopStorageDAO.IdentifierSerializer<K> serializer;
+    private final JavaPlugin plugin;
 
-    public DefaultTopFactory(@NotNull TopStorageDAO.IdentifierSerializer<K> serializer) {
+    public DefaultTopFactory(@NotNull TopStorageDAO.IdentifierSerializer<K> serializer,
+                             @NotNull JavaPlugin plugin) {
         this.serializer = Objects.requireNonNull(serializer, "serializer cannot be null");
+        this.plugin     = Objects.requireNonNull(plugin,     "plugin cannot be null");
     }
 
     @Override
     @NotNull
     public Top<K> createTop(@NotNull String id,
-                           @NotNull TopConfig config,
-                           @NotNull ValueProvider<K> valueProvider,
-                           @NotNull NameResolver<K> nameResolver,
-                           @NotNull TopStorage<K> storage) {
-        Objects.requireNonNull(id, "id cannot be null");
-        Objects.requireNonNull(config, "config cannot be null");
+                            @NotNull TopConfig config,
+                            @NotNull ValueProvider<K> valueProvider,
+                            @NotNull NameResolver<K> nameResolver,
+                            @NotNull TopStorage<K> storage) {
+        Objects.requireNonNull(id,            "id cannot be null");
+        Objects.requireNonNull(config,        "config cannot be null");
         Objects.requireNonNull(valueProvider, "valueProvider cannot be null");
-        Objects.requireNonNull(nameResolver, "nameResolver cannot be null");
-        Objects.requireNonNull(storage, "storage cannot be null");
+        Objects.requireNonNull(nameResolver,  "nameResolver cannot be null");
+        Objects.requireNonNull(storage,       "storage cannot be null");
 
-        return new DefaultTop<>(id, config, valueProvider, nameResolver, storage);
+        return new DefaultTop<>(plugin, id, config, valueProvider, nameResolver, storage);
     }
 
     @Override
     @NotNull
     public TimedTop<K> createTimedTop(@NotNull String id,
-                                     @NotNull TopConfig config,
-                                     @NotNull ValueProvider<K> valueProvider,
-                                     @NotNull NameResolver<K> nameResolver,
-                                     @NotNull TopStorage<K> storage,
-                                     @NotNull ResetSchedule resetSchedule) {
-        Objects.requireNonNull(id, "id cannot be null");
-        Objects.requireNonNull(config, "config cannot be null");
+                                      @NotNull TopConfig config,
+                                      @NotNull ValueProvider<K> valueProvider,
+                                      @NotNull NameResolver<K> nameResolver,
+                                      @NotNull TopStorage<K> storage,
+                                      @NotNull ResetSchedule resetSchedule) {
+        Objects.requireNonNull(id,            "id cannot be null");
+        Objects.requireNonNull(config,        "config cannot be null");
         Objects.requireNonNull(valueProvider, "valueProvider cannot be null");
-        Objects.requireNonNull(nameResolver, "nameResolver cannot be null");
-        Objects.requireNonNull(storage, "storage cannot be null");
+        Objects.requireNonNull(nameResolver,  "nameResolver cannot be null");
+        Objects.requireNonNull(storage,       "storage cannot be null");
         Objects.requireNonNull(resetSchedule, "resetSchedule cannot be null");
 
         TimedValueProvider<K> timedProvider;
-        SnapshotDAO<K> snapshotDAO;
+        SnapshotDAO<K>        snapshotDAO;
 
         if (valueProvider instanceof TimedValueProvider) {
             timedProvider = (TimedValueProvider<K>) valueProvider;
-            snapshotDAO = timedProvider.getSnapshotDAO();
+            snapshotDAO   = timedProvider.getSnapshotDAO();
         } else {
-            snapshotDAO = new SnapshotDAO<>(id, serializer);
+            snapshotDAO   = new SnapshotDAO<>(id, serializer);
             timedProvider = new TimedValueProvider<>(id, valueProvider, snapshotDAO);
         }
 
-        return new DefaultTimedTop<>(id, config, timedProvider, nameResolver, storage, resetSchedule, snapshotDAO);
+        return new DefaultTimedTop<>(plugin, id, config, timedProvider, nameResolver, storage, resetSchedule, snapshotDAO);
     }
 }

@@ -1,9 +1,11 @@
 package com.blakube.bktops.plugin.hook.placeholder;
 
 import com.blakube.bktops.api.config.ConfigType;
-import com.blakube.bktops.plugin.service.config.ConfigService;
 import com.blakube.bktops.plugin.formatter.NumberFormatter;
-import com.blakube.bktops.plugin.formatter.NumberFormatterProvider;
+import com.blakube.bktops.plugin.formatter.NumberValueFormatter;
+import com.blakube.bktops.plugin.formatter.TimeValueFormatter;
+import com.blakube.bktops.plugin.formatter.ValueFormatter;
+import com.blakube.bktops.plugin.service.config.ConfigService;
 import com.blakube.bktops.plugin.service.time.ObtainTimeService;
 import com.blakube.bktops.plugin.service.time.TimeFormatService;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
@@ -17,18 +19,28 @@ import com.blakube.bktops.api.top.Top;
 import com.blakube.bktops.api.top.TopEntry;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PlaceholderAPIHook extends PlaceholderExpansion {
+
+    private static final ValueFormatter DEFAULT_FORMATTER = new NumberValueFormatter(null);
 
     private final ConfigService configService;
     private final TimeFormatService timeFormatService;
     private final ObtainTimeService obtainTimeService = new ObtainTimeService();
 
+    private Map<String, ValueFormatter> modeFormatters;
+    private final Map<String, ValueFormatter> topFormatterCache = new ConcurrentHashMap<>();
+
     public PlaceholderAPIHook(ConfigService configService) {
         this.configService = configService;
         this.timeFormatService = new TimeFormatService(configService);
+        this.modeFormatters = buildModeFormatters();
     }
 
     @Override
@@ -75,6 +87,7 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         }
 
         if (identifier.startsWith("myposition_")) {
+            if (player == null) return notInTop();
             String topId = identifier.substring("myposition_".length());
             return handleMyPositionPlaceholder(player, topId);
         }
@@ -112,26 +125,28 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 
         String typeStr = parts[0];
 
-        NumberFormatter.FormatMode formatOverride = null;
+        ValueFormatter inlineFormatter = null;
         if (typeStr.contains(":")) {
-            String[] typeParts = typeStr.split(":");
+            String[] typeParts = typeStr.split(":", 2);
             typeStr = typeParts[0];
+            inlineFormatter = modeFormatters.get(typeParts[1].toUpperCase());
+        }
 
-            if (typeParts.length > 1) {
-                try {
-                    formatOverride = NumberFormatter.FormatMode.valueOf(typeParts[1].toUpperCase());
-                } catch (IllegalArgumentException ignored) {
-                }
+        
+        int topIdStart = 1;
+        if (inlineFormatter == null && parts.length >= 4) {
+            ValueFormatter modeMatch = modeFormatters.get(parts[1].toUpperCase());
+            if (modeMatch != null) {
+                inlineFormatter = modeMatch;
+                topIdStart = 2;
             }
         }
 
         String posStr = parts[parts.length - 1];
 
         StringBuilder topIdBuilder = new StringBuilder();
-        for (int i = 1; i < parts.length - 1; i++) {
-            if (i > 1) {
-                topIdBuilder.append("_");
-            }
+        for (int i = topIdStart; i < parts.length - 1; i++) {
+            if (i > topIdStart) topIdBuilder.append("_");
             topIdBuilder.append(parts[i]);
         }
         String topId = topIdBuilder.toString();
@@ -166,23 +181,20 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 
         if (typeStr.equals("name")) {
             return entry.getDisplayName();
-        } else {
-            return NumberFormatterProvider.getInstance().format(entry.getValue(), formatOverride);
         }
+
+        ValueFormatter formatter = inlineFormatter != null ? inlineFormatter : resolveTopFormatter(top);
+        return formatter.format(entry.getValue());
     }
 
     private String handleSpacedPlaceholder(@NotNull String topId, int position) {
         TopAPI api = TopAPIProvider.getInstance();
         Top<?> top = api.getTop(topId);
 
-        if (top == null) {
-            return "";
-        }
+        if (top == null) return "";
 
         Optional<? extends TopEntry<?>> entryOpt = top.getEntry(position);
-        if (entryOpt.isEmpty()) {
-            return "";
-        }
+        if (entryOpt.isEmpty()) return "";
 
         TopEntry<?> entry = entryOpt.get();
 
@@ -190,29 +202,13 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         int maxLength = configService.provide(ConfigType.CONFIG).getInt("spaced.length", 40);
 
         String displayName = entry.getDisplayName();
-        String formattedValue = NumberFormatterProvider.getInstance().format(entry.getValue());
+        String formattedValue = resolveTopFormatter(top).format(entry.getValue());
 
         String cleanName = stripMinecraftColors(displayName);
-
-        int nameLength = cleanName.length();
-        int valueLength = formattedValue.length();
-        int totalContentLength = nameLength + valueLength;
-
-        int spacesNeeded = maxLength - totalContentLength;
-
-        if (spacesNeeded < 1) {
-            spacesNeeded = 1;
-        }
+        int spacesNeeded = maxLength - cleanName.length() - formattedValue.length();
+        if (spacesNeeded < 1) spacesNeeded = 1;
 
         return fillChar.repeat(spacesNeeded) + " ";
-    }
-
-    private String stripMinecraftColors(@NotNull String text) {
-        String result = text.replaceAll("[&§][0-9a-fk-or]", "");
-        result = result.replaceAll("[&§]x([&§][0-9a-f]){6}", "");
-        result = result.replaceAll("<[^>]+>", "");
-
-        return result;
     }
 
     private String handleDisplayNamePlaceholder(@NotNull String topId) {
@@ -220,16 +216,11 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         Top<?> top = api.getTop(topId);
 
         if (top == null) {
-            return configService.provide(ConfigType.LANG)
-                    .getString("invalid-placeholder.top-id", "Unknown topId!");
+            return configService.provide(ConfigType.LANG).getString("invalid-placeholder.top-id", "Unknown topId!");
         }
 
         String displayName = top.getConfig().getDisplayName();
-        if (displayName == null || displayName.isEmpty()) {
-            return topId;
-        }
-
-        return displayName;
+        return (displayName == null || displayName.isEmpty()) ? topId : displayName;
     }
 
     private String handleDistanceAbovePlaceholder(@Nullable Player player, @NotNull String topId) {
@@ -249,7 +240,7 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         if (above.isEmpty() || mine.isEmpty()) return configService.provide(ConfigType.LANG).getString("position.no-neighbor-above", "---");
 
         double distance = above.get().getValue() - mine.get().getValue();
-        return NumberFormatterProvider.getInstance().format(distance);
+        return resolveTopFormatter(top).format(distance);
     }
 
     private String handleDistanceBelowPlaceholder(@Nullable Player player, @NotNull String topId) {
@@ -268,7 +259,7 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         if (below.isEmpty() || mine.isEmpty()) return configService.provide(ConfigType.LANG).getString("position.no-neighbor-below", "---");
 
         double distance = mine.get().getValue() - below.get().getValue();
-        return NumberFormatterProvider.getInstance().format(distance);
+        return resolveTopFormatter(top).format(distance);
     }
 
     private String handleAboveNamePlaceholder(@Nullable Player player, @NotNull String topId) {
@@ -304,31 +295,55 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
                 .orElseGet(() -> configService.provide(ConfigType.LANG).getString("position.no-neighbor-below", "---"));
     }
 
-    private String notInTop() {
-        return configService.provide(ConfigType.LANG).getString("position.not-in-top", "N/A");
-    }
-
     private String handleMyPositionPlaceholder(@NotNull Player player, @NotNull String topId) {
         TopAPI api = TopAPIProvider.getInstance();
         Top<?> top = api.getTop(topId);
 
         if (top == null) {
-            return configService.provide(ConfigType.LANG)
-                    .getString("invalid-placeholder.top-id", "Unknown topId!");
+            return configService.provide(ConfigType.LANG).getString("invalid-placeholder.top-id", "Unknown topId!");
         }
 
         @SuppressWarnings("unchecked")
         Top<UUID> uuidTop = (Top<UUID>) top;
         int position = uuidTop.getPosition(player.getUniqueId());
 
-        if (position == -1) {
-            return configService.provide(ConfigType.LANG)
-                    .getString("position.not-in-top", "You are not in the top!");
-        }
+        return position == -1
+                ? configService.provide(ConfigType.LANG).getString("position.not-in-top", "You are not in the top!")
+                : String.valueOf(position);
+    }
 
-        return String.valueOf(position);
+    private String notInTop() {
+        return configService.provide(ConfigType.LANG).getString("position.not-in-top", "N/A");
+    }
+
+    private String stripMinecraftColors(@NotNull String text) {
+        String result = text.replaceAll("[&§][0-9a-fk-or]", "");
+        result = result.replaceAll("[&§]x([&§][0-9a-f]){6}", "");
+        result = result.replaceAll("<[^>]+>", "");
+        return result;
+    }
+
+    private ValueFormatter resolveTopFormatter(@NotNull Top<?> top) {
+        return topFormatterCache.computeIfAbsent(top.getId(), k -> {
+            String format = top.getConfig().getValueFormat();
+            if (format == null) return DEFAULT_FORMATTER;
+            ValueFormatter f = modeFormatters.get(format.toUpperCase());
+            return f != null ? f : DEFAULT_FORMATTER;
+        });
+    }
+
+    private Map<String, ValueFormatter> buildModeFormatters() {
+        Map<String, ValueFormatter> map = new HashMap<>();
+        map.put("EXACT",           new NumberValueFormatter(NumberFormatter.FormatMode.EXACT));
+        map.put("ROUNDED",         new NumberValueFormatter(NumberFormatter.FormatMode.ROUNDED));
+        map.put("COMPACT",         new NumberValueFormatter(NumberFormatter.FormatMode.COMPACT));
+        map.put("COMPACT_ROUNDED", new NumberValueFormatter(NumberFormatter.FormatMode.COMPACT_ROUNDED));
+        map.put("TIME",            new TimeValueFormatter(configService.provide(ConfigType.CONFIG)));
+        return Collections.unmodifiableMap(map);
     }
 
     public void reload() {
+        modeFormatters = buildModeFormatters();
+        topFormatterCache.clear();
     }
 }

@@ -10,19 +10,15 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-/**
- * Minimal 5-field cron implementation: "m h dom mon dow"
- * - Supports: "*", single numbers, comma lists (e.g., 0,15,30), ranges (e.g., 1-5), and step values (for example every 5 minutes or 10-50 with step 10).
- * - Month is 1-12, Day of week is 0-6 (0 = Sunday) to align with common cron; also accepts 7 as Sunday.
- * - This is intentionally minimal and should cover common schedules like "0 0 * * *" (every day at midnight).
- */
 public final class CronExpression {
 
-    private final Field minutes;   // 0-59
-    private final Field hours;     // 0-23
-    private final Field dom;       // 1-31
-    private final Field month;     // 1-12
-    private final Field dow;       // 0-6 (0=Sunday)
+    private static final int MAX_SEARCH_MINUTES = 60 * 24 * 366 * 5;
+
+    private final Field minutes;   
+    private final Field hours;     
+    private final Field dom;       
+    private final Field month;     
+    private final Field dow;       
 
     private CronExpression(Field minutes, Field hours, Field dom, Field month, Field dow) {
         this.minutes = minutes;
@@ -41,29 +37,27 @@ public final class CronExpression {
         Field hours = Field.parse(parts[1], 0, 23);
         Field dom = Field.parse(parts[2], 1, 31);
         Field month = Field.parse(parts[3], 1, 12);
-        Field dow = Field.parse(parts[4], 0, 7); // allow 7 for Sunday too
+        Field dow = Field.parse(parts[4], 0, 7); 
         return new CronExpression(minutes, hours, dom, month, dow);
     }
 
-    /**
-     * Returns the next execution strictly after the provided instant, or null if none can be found within a reasonable horizon.
-     */
+    
     public Instant nextExecutionAfter(@NotNull Instant instant) {
-        // We iterate minutes forward up to a horizon (e.g., 5 years) to avoid infinite loops
+        
         ZonedDateTime zdt = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault()).plusMinutes(1).withSecond(0).withNano(0);
 
-        for (int i = 0; i < 60 * 24 * 366 * 5; i++) { // up to ~5 years
+        for (int i = 0; i < MAX_SEARCH_MINUTES; i++) {
             int m = zdt.getMinute();
             int h = zdt.getHour();
             int day = zdt.getDayOfMonth();
             int mon = zdt.getMonthValue();
-            int dowVal = zdt.getDayOfWeek().getValue(); // 1=Mon..7=Sun
-            dowVal = (dowVal == 7) ? 0 : dowVal; // convert to 0=Sun..6=Sat
+            int dowVal = zdt.getDayOfWeek().getValue(); 
+            dowVal = (dowVal == 7) ? 0 : dowVal; 
 
-            // Cron semantics for Day-of-Month (DOM) and Day-of-Week (DOW):
-            // - If both DOM and DOW are '*': match any day.
-            // - If only one of DOM or DOW is '*': only the other field restricts the match.
-            // - If neither is '*': a match occurs when EITHER field matches (OR).
+            
+            
+            
+            
             boolean domWildcard = dom.isWildcard();
             boolean dowWildcard = dow.isWildcard();
             boolean domMatches = dom.contains(day);
@@ -92,7 +86,7 @@ public final class CronExpression {
     }
 
     private boolean dowContains(int dowVal) {
-        // allow 7 as Sunday as well as 0
+        
         if (dow.contains(dowVal)) return true;
         if (dowVal == 0) return dow.contains(7);
         return false;
@@ -128,7 +122,7 @@ public final class CronExpression {
         }
 
         private static void parsePart(Field f, String part) {
-            // step pattern a-b/x or */x or a/x
+            
             String base = part;
             int step = 1;
             if (part.contains("/")) {

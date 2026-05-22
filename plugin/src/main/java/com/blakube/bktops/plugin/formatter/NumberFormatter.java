@@ -12,13 +12,14 @@ public class NumberFormatter {
 
     private final ConfigContainer config;
     private FormatMode mode;
-    private String thousandSeparator;
-    private String decimalSeparator;
-    private int decimalPlaces;
     private String thousandSuffix;
     private String millionSuffix;
     private String billionSuffix;
     private String trillionSuffix;
+
+    private DecimalFormat exactFormat;
+    private DecimalFormat roundedFormat;
+    private DecimalFormat compactFormat;
 
     public NumberFormatter(@NotNull ConfigContainer config) {
         this.config = config;
@@ -33,14 +34,39 @@ public class NumberFormatter {
             this.mode = FormatMode.EXACT;
         }
 
-        this.thousandSeparator = config.getString("number-format.thousand-separator", ",");
-        this.decimalSeparator = config.getString("number-format.decimal-separator", ".");
-        this.decimalPlaces = Math.max(0, Math.min(12, config.getInt("number-format.decimal-places", 2)));
+        String thousandSeparator = config.getString("number-format.thousand-separator", ",");
+        String decimalSeparator  = config.getString("number-format.decimal-separator", ".");
+        int    decimalPlaces     = Math.max(0, Math.min(12, config.getInt("number-format.decimal-places", 2)));
 
         this.thousandSuffix = config.getString("number-format.compact-suffixes.thousand", "K");
-        this.millionSuffix = config.getString("number-format.compact-suffixes.million", "M");
-        this.billionSuffix = config.getString("number-format.compact-suffixes.billion", "B");
+        this.millionSuffix  = config.getString("number-format.compact-suffixes.million", "M");
+        this.billionSuffix  = config.getString("number-format.compact-suffixes.billion", "B");
         this.trillionSuffix = config.getString("number-format.compact-suffixes.trillion", "T");
+
+        DecimalFormatSymbols exactSymbols = new DecimalFormatSymbols(Locale.US);
+        exactSymbols.setGroupingSeparator(thousandSeparator.isEmpty() ? '\0' : thousandSeparator.charAt(0));
+        exactSymbols.setDecimalSeparator(decimalSeparator.charAt(0));
+        StringBuilder exactPattern = new StringBuilder(thousandSeparator.isEmpty() ? "###0" : "#,##0");
+        if (decimalPlaces > 0) exactPattern.append(".").append("0".repeat(decimalPlaces));
+        this.exactFormat = new DecimalFormat(exactPattern.toString(), exactSymbols);
+        this.exactFormat.setGroupingUsed(!thousandSeparator.isEmpty());
+
+        if (!thousandSeparator.isEmpty()) {
+            DecimalFormatSymbols roundedSymbols = new DecimalFormatSymbols(Locale.US);
+            roundedSymbols.setGroupingSeparator(thousandSeparator.charAt(0));
+            this.roundedFormat = new DecimalFormat("#,###", roundedSymbols);
+        } else {
+            this.roundedFormat = null;
+        }
+
+        if (decimalPlaces > 0) {
+            DecimalFormatSymbols compactSymbols = new DecimalFormatSymbols(Locale.US);
+            compactSymbols.setDecimalSeparator(decimalSeparator.charAt(0));
+            StringBuilder compactPattern = new StringBuilder("0.").append("#".repeat(decimalPlaces));
+            this.compactFormat = new DecimalFormat(compactPattern.toString(), compactSymbols);
+        } else {
+            this.compactFormat = null;
+        }
     }
 
     @NotNull
@@ -62,62 +88,23 @@ public class NumberFormatter {
 
     @NotNull
     private String formatExact(double value) {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        symbols.setGroupingSeparator(thousandSeparator.isEmpty() ? '\0' : thousandSeparator.charAt(0));
-        symbols.setDecimalSeparator(decimalSeparator.charAt(0));
-
-        StringBuilder pattern = new StringBuilder("#");
-        if (!thousandSeparator.isEmpty()) {
-            pattern.append(",###");
-        } else {
-            pattern.append("###");
-        }
-
-        if (decimalPlaces > 0) {
-            pattern.append(".");
-            pattern.append("0".repeat(decimalPlaces));
-        }
-
-        DecimalFormat df = new DecimalFormat(pattern.toString(), symbols);
-        df.setGroupingUsed(!thousandSeparator.isEmpty());
-
-        return df.format(value);
+        return exactFormat.format(value);
     }
 
     @NotNull
     private String formatRounded(double value) {
         long rounded = Math.round(value);
-
-        if (thousandSeparator.isEmpty()) {
-            return String.valueOf(rounded);
-        }
-
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        symbols.setGroupingSeparator(thousandSeparator.charAt(0));
-
-        DecimalFormat df = new DecimalFormat("#,###", symbols);
-        return df.format(rounded);
+        return roundedFormat != null ? roundedFormat.format(rounded) : String.valueOf(rounded);
     }
 
     @NotNull
     private String formatCompact(double value, boolean includeDecimals) {
         CompactResult result = getCompactValue(value);
 
-        if (includeDecimals && decimalPlaces > 0) {
-            DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-            symbols.setDecimalSeparator(decimalSeparator.charAt(0));
-
-            StringBuilder pattern = new StringBuilder("0");
-            if (decimalPlaces > 0) {
-                pattern.append(".");
-                pattern.append("#".repeat(decimalPlaces));
-            }
-
-            DecimalFormat df = new DecimalFormat(pattern.toString(), symbols);
-            return df.format(result.value) + result.suffix;
+        if (includeDecimals && compactFormat != null) {
+            return compactFormat.format(result.value) + result.suffix;
         } else {
-            long rounded = Math.round(result.value);
-            return rounded + result.suffix;
+            return Math.round(result.value) + result.suffix;
         }
     }
 

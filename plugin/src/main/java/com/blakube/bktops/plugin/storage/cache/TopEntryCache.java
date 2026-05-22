@@ -45,36 +45,58 @@ public final class TopEntryCache<K> {
     public int updateEntry(@NotNull K identifier, @NotNull String displayName, double newValue, int maxSize) {
         while (true) {
             State<K> current = stateRef.get();
+            List<TopEntry<K>> old = current.entries;
 
-            List<TopEntry<K>> working = new ArrayList<>(current.entries.size() + 1);
-            for (TopEntry<K> e : current.entries) {
-                if (!e.getIdentifier().equals(identifier)) {
-                    working.add(e);
-                }
+            
+            int existingIdx = -1;
+            for (int i = 0; i < old.size(); i++) {
+                if (old.get(i).getIdentifier().equals(identifier)) { existingIdx = i; break; }
             }
 
-            boolean qualifies = working.size() < maxSize
-                    || (!working.isEmpty() && newValue > working.get(working.size() - 1).getValue());
+            
+            boolean wouldFit = (old.size() - (existingIdx >= 0 ? 1 : 0)) < maxSize
+                    || (!old.isEmpty() && newValue > old.get(old.size() - 1).getValue())
+                    || existingIdx >= 0;
 
-            if (qualifies) {
-                working.add(new TopEntry<>(identifier, displayName, newValue, 0));
-                Collections.sort(working);
-                if (working.size() > maxSize) {
-                    working = new ArrayList<>(working.subList(0, maxSize));
-                }
+            if (!wouldFit) {
+                
+                return -1;
             }
 
-            List<TopEntry<K>>   finalList = new ArrayList<>(working.size());
-            HashMap<K, Integer> newIndex  = new HashMap<>(working.size() * 2);
+            
+            List<TopEntry<K>> working = new ArrayList<>(Math.min(old.size() + 1, maxSize + 1));
+            for (int i = 0; i < old.size(); i++) {
+                if (i != existingIdx) working.add(old.get(i));
+            }
+
+            
+            
+            
+            TopEntry<K> newEntry = new TopEntry<>(identifier, displayName, newValue, 0);
+            int lo = 0, hi = working.size();
+            while (lo < hi) {
+                int mid = (lo + hi) >>> 1;
+                if (working.get(mid).compareTo(newEntry) > 0) hi = mid;
+                else lo = mid + 1;
+            }
+            working.add(lo, newEntry);
+
+            
+            if (working.size() > maxSize) working.remove(working.size() - 1);
+
+            
+            HashMap<K, Integer> newIndex = new HashMap<>(working.size() * 2);
             for (int i = 0; i < working.size(); i++) {
-                TopEntry<K> e   = working.get(i);
-                int         pos = i + 1;
-                finalList.add(new TopEntry<>(e.getIdentifier(), e.getDisplayName(), e.getValue(), pos, e.getLastUpdated()));
-                newIndex.put(e.getIdentifier(), pos);
+                TopEntry<K> e = working.get(i);
+                int pos = i + 1;
+                if (e.getPosition() != pos) {
+                    working.set(i, new TopEntry<>(e.getIdentifier(), e.getDisplayName(), e.getValue(), pos, e.getLastUpdated()));
+                }
+                newIndex.put(working.get(i).getIdentifier(), pos);
             }
 
             State<K> next = new State<>(
-                    Collections.unmodifiableList(finalList),
+                    Collections.unmodifiableList(working),
                     Collections.unmodifiableMap(newIndex)
             );
 
@@ -101,17 +123,18 @@ public final class TopEntryCache<K> {
 
             if (staleIds.isEmpty()) return Collections.emptyList();
 
-            List<TopEntry<K>>   finalList = new ArrayList<>(working.size());
-            HashMap<K, Integer> newIndex  = new HashMap<>(working.size() * 2);
+            HashMap<K, Integer> newIndex = new HashMap<>(working.size() * 2);
             for (int i = 0; i < working.size(); i++) {
                 TopEntry<K> e   = working.get(i);
                 int         pos = i + 1;
-                finalList.add(new TopEntry<>(e.getIdentifier(), e.getDisplayName(), e.getValue(), pos, e.getLastUpdated()));
-                newIndex.put(e.getIdentifier(), pos);
+                if (e.getPosition() != pos) {
+                    working.set(i, new TopEntry<>(e.getIdentifier(), e.getDisplayName(), e.getValue(), pos, e.getLastUpdated()));
+                }
+                newIndex.put(working.get(i).getIdentifier(), pos);
             }
 
             State<K> next = new State<>(
-                    Collections.unmodifiableList(finalList),
+                    Collections.unmodifiableList(working),
                     Collections.unmodifiableMap(newIndex)
             );
 
@@ -129,17 +152,18 @@ public final class TopEntryCache<K> {
                 if (!e.getIdentifier().equals(identifier)) working.add(e);
             }
 
-            List<TopEntry<K>>   finalList = new ArrayList<>(working.size());
-            HashMap<K, Integer> newIndex  = new HashMap<>(working.size() * 2);
+            HashMap<K, Integer> newIndex = new HashMap<>(working.size() * 2);
             for (int i = 0; i < working.size(); i++) {
                 TopEntry<K> e   = working.get(i);
                 int         pos = i + 1;
-                finalList.add(new TopEntry<>(e.getIdentifier(), e.getDisplayName(), e.getValue(), pos, e.getLastUpdated()));
-                newIndex.put(e.getIdentifier(), pos);
+                if (e.getPosition() != pos) {
+                    working.set(i, new TopEntry<>(e.getIdentifier(), e.getDisplayName(), e.getValue(), pos, e.getLastUpdated()));
+                }
+                newIndex.put(working.get(i).getIdentifier(), pos);
             }
 
             State<K> next = new State<>(
-                    Collections.unmodifiableList(finalList),
+                    Collections.unmodifiableList(working),
                     Collections.unmodifiableMap(newIndex)
             );
 

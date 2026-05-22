@@ -15,14 +15,17 @@ public final class TopConfigBuilder implements Builder<TopConfig, ConfigurationS
     public TopConfig build(@NotNull ConfigurationSection section) {
         return TopConfig.builder()
             .size(section.getInt("size", 10))
-            .enableOnlineQueue(section.getBoolean("queues.online", true))
-            .onlineQueueInterval(section.getInt("queues.online-interval", 100))
+            .enableOnlineQueue(section.getBoolean("queues.online", false))
+            .onlineQueueInterval(section.getInt("queues.online-interval", 288000))
             .enableRotativeQueue(section.getBoolean("queues.rotative", false))
-            .rotativeQueueSize(section.getInt("queues.rotative-size", 100))
-            .batchSize(section.getInt("processing.batch-size", 10))
-            .tickDelay(section.getInt("processing.tick-delay", 4))
+            .rotativeQueueSize(section.getInt("queues.rotative-size", 20))
+            .rotativeQueueInterval(section.getInt("queues.rotative-interval", 40))
+            .batchSize(section.getInt("processing.batch-size", 5))
+            .tickDelay(section.getInt("processing.tick-delay", 20))
+            .allowZeroValues(section.getBoolean("processing.allow-zero", false))
             .displayName(section.getString("display-name", null))
             .conditionSet(parseConditionSet(section))
+            .valueFormat(section.getString("value-format", null))
             .build();
     }
 

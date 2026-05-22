@@ -226,7 +226,6 @@ public class ConfigLoader {
         }
     }
 
-
     private String getResourceNameForPath(String fullPath) {
         for (ConfigType type : ConfigType.values()) {
             if (!type.isFolder() && type.getDefaultPath().equals(fullPath)) {
@@ -235,7 +234,6 @@ public class ConfigLoader {
         }
         return null;
     }
-
 
     private boolean isCacheValid(String fullPath) {
         if (!configCache.containsKey(fullPath)) {

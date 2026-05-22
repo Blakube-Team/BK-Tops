@@ -8,8 +8,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public final class DatabaseExecutors {
 
-    private static final int THREADS = 1;
-
     private static final ThreadFactory DB_THREAD_FACTORY = new ThreadFactory() {
         private final AtomicInteger count = new AtomicInteger();
 
@@ -21,7 +19,11 @@ public final class DatabaseExecutors {
         }
     };
 
-    public static final ExecutorService DB_EXECUTOR = Executors.newFixedThreadPool(THREADS, DB_THREAD_FACTORY);
+    public static volatile ExecutorService DB_EXECUTOR = Executors.newFixedThreadPool(1, DB_THREAD_FACTORY);
+
+    public static void init(int threads) {
+        DB_EXECUTOR = Executors.newFixedThreadPool(Math.max(1, threads), DB_THREAD_FACTORY);
+    }
 
     public static void awaitPendingTasks() {
         try {

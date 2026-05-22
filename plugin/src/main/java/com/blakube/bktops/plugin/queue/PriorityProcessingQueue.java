@@ -85,14 +85,19 @@ public final class PriorityProcessingQueue<K> implements ProcessingQueue<K> {
 
     @Override
     public boolean isEmpty() {
-        return queues.values().stream().allMatch(Queue::isEmpty);
+        for (Queue<QueueEntry<K>> q : queues.values()) {
+            if (!q.isEmpty()) return false;
+        }
+        return true;
     }
 
     @Override
     public int size() {
-        return queues.values().stream()
-                .mapToInt(Queue::size)
-                .sum();
+        int total = 0;
+        for (Queue<QueueEntry<K>> q : queues.values()) {
+            total += q.size();
+        }
+        return total;
     }
 
     @Override

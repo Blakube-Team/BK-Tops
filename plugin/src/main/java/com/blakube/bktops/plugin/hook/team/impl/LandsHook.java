@@ -19,7 +19,9 @@ public final class LandsHook implements TeamHook {
     public LandsHook(TeamHookHelpService helper) {
         this.available = helper.resolveAvailability("lands", "Lands");
         this.priority = helper.getPriority("lands");
-        this.api = LandsIntegration.of(Bukkit.getPluginManager().getPlugin("BK-Tops"));
+        if (available) {
+            this.api = LandsIntegration.of(Bukkit.getPluginManager().getPlugin("BK-Tops"));
+        }
     }
 
     @Override
