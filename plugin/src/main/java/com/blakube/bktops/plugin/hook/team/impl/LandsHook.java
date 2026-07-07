@@ -41,30 +41,37 @@ public final class LandsHook implements TeamHook {
 
     @Override
     public Set<UUID> getTeamMembers(UUID anyTeamMember) {
-        LandPlayer landPlayer = api.getLandPlayer(anyTeamMember);
-        if (landPlayer == null) return Set.of();
-        var owningLand = landPlayer.getOwningLand();
-        if (owningLand == null) return Set.of();
-        var nation = owningLand.getNation();
+        var land = resolveLand(anyTeamMember);
+        if (land == null) return Set.of();
+        var nation = land.getNation();
         if (nation != null) {
             return nation.getTrustedPlayers().stream().collect(Collectors.toSet());
         }
-        return owningLand.getTrustedPlayers().stream().collect(Collectors.toSet());
+        return land.getTrustedPlayers().stream().collect(Collectors.toSet());
     }
 
     @Override
     public String getTeamDisplayName(UUID anyTeamMember) {
-        LandPlayer landPlayer = api.getLandPlayer(anyTeamMember);
-        if (landPlayer == null) return null;
-        var owningLand = landPlayer.getOwningLand();
-        if (owningLand == null) return null;
-        return owningLand.getName();
+        var land = resolveLand(anyTeamMember);
+        if (land == null) return null;
+        return land.getName();
     }
 
     @Override
     public boolean isTeamMember(UUID uuid) {
-        LandPlayer landPlayer = api.getLandPlayer(uuid);
-        return landPlayer != null && landPlayer.getOwningLand() != null;
+        return resolveLand(uuid) != null;
+    }
+
+    
+    
+    private me.angeschossen.lands.api.land.Land resolveLand(UUID playerId) {
+        LandPlayer landPlayer = api.getLandPlayer(playerId);
+        if (landPlayer == null) return null;
+        var owningLand = landPlayer.getOwningLand();
+        if (owningLand != null) return owningLand;
+        var lands = landPlayer.getLands();
+        if (lands == null || lands.isEmpty()) return null;
+        return lands.iterator().next();
     }
 
     @Override

@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-public final class TeamValueProvider implements ValueProvider<UUID> {
+public final class TeamValueProvider implements ValueProvider<UUID>, DetectableValueKind {
 
     private final TeamScoreService teamScoreService;
     private final String placeholder;
@@ -40,5 +40,10 @@ public final class TeamValueProvider implements ValueProvider<UUID> {
     public boolean isAvailable() {
         Plugin papi = Bukkit.getPluginManager().getPlugin("PlaceholderAPI");
         return papi != null && papi.isEnabled();
+    }
+
+    @Override
+    public @NotNull ValueKind getDetectedValueKind() {
+        return teamScoreService.getDetectedValueKind(placeholder);
     }
 }

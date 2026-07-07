@@ -1,18 +1,36 @@
+############################################
+# BK-Tops · Core config
+#
+# Global formatting and runtime settings used by the plugin. This file controls
+# aligned text, number rendering, time formatting, and debug logging.
+#
+# Notes:
+#  - `spaced` controls the alignment helper used in list-like outputs.
+#  - `number-format` is the default renderer for numeric values.
+#  - `time-format` applies when a top uses TIME or auto-detected durations.
+############################################
 
 spaced:
+  # Character used between the name and value when aligning output.
   char: "-"
 
+  # Maximum total width handled by the spacing helper.
   length: 40
 
 number-format:
+  # Default rendering mode when a top does not set its own value-format.
   mode: EXACT
 
+  # Thousands separator used by EXACT and ROUNDED formats.
   thousand-separator: ","
 
+  # Decimal separator used by EXACT and COMPACT formats.
   decimal-separator: "."
 
+  # Number of decimal places used by EXACT and COMPACT formats.
   decimal-places: 2
 
+  # Suffixes used by compact formatting.
   compact-suffixes:
     thousand: "K"
     million: "M"
@@ -20,8 +38,11 @@ number-format:
     trillion: "T"
 
 time-format:
+  # Separator between time units when formatting durations.
   separator: " "
+  # Maximum number of time units shown in the output.
   significant-figures: 3
+  # Suffixes used for time rendering.
   suffixes:
     years: "y"
     months: "mo"
@@ -31,6 +52,8 @@ time-format:
     minutes: "m"
     seconds: "s"
 
+# Enables extra internal logging for troubleshooting.
 debug: false
 
+# DO NOT TOUCH THIS!
 config-version: 4

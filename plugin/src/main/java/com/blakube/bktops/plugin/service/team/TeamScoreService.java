@@ -2,6 +2,7 @@ package com.blakube.bktops.plugin.service.team;
 
 import com.blakube.bktops.plugin.hook.team.TeamHandler;
 import com.blakube.bktops.plugin.provider.PlaceholderValueProvider;
+import com.blakube.bktops.plugin.provider.ValueKind;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 
@@ -13,6 +14,7 @@ public final class TeamScoreService {
 
     private final Plugin plugin;
     private final TeamHandler teamHandler;
+    private final ValueKind parseHint;
     private final Map<String, PlaceholderValueProvider> providers = new ConcurrentHashMap<>();
     
     private static final long MEMBERS_TTL_MILLIS = TimeUnit.SECONDS.toMillis(3);
@@ -21,8 +23,13 @@ public final class TeamScoreService {
     private final Map<UUID, TimedEntry<String>> nameCache = new ConcurrentHashMap<>();
 
     public TeamScoreService(@NotNull Plugin plugin, @NotNull TeamHandler teamHandler) {
+        this(plugin, teamHandler, ValueKind.UNKNOWN);
+    }
+
+    public TeamScoreService(@NotNull Plugin plugin, @NotNull TeamHandler teamHandler, @NotNull ValueKind parseHint) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.teamHandler = Objects.requireNonNull(teamHandler, "teamHandler");
+        this.parseHint = Objects.requireNonNull(parseHint, "parseHint");
     }
 
     public Optional<Double> computeTeamScore(@NotNull UUID anyMember, @NotNull String placeholder) {
@@ -41,7 +48,7 @@ public final class TeamScoreService {
             members = validated;
         }
 
-        PlaceholderValueProvider provider = providers.computeIfAbsent(placeholder, ph -> new PlaceholderValueProvider(plugin, ph));
+        PlaceholderValueProvider provider = providers.computeIfAbsent(placeholder, ph -> new PlaceholderValueProvider(plugin, ph, parseHint));
 
         boolean anyValue = false;
         double sum = 0.0d;
@@ -56,7 +63,24 @@ public final class TeamScoreService {
             }
         }
 
+        final double finalSum = sum;
+        final boolean finalAnyValue = anyValue;
+        final int memberCount = members.size();
+        com.blakube.bktops.plugin.debug.Debug.log(() -> "Team score for member " + anyMember + " via " + placeholder
+                + ": sum=" + finalSum + " over " + memberCount + " member(s), hasValue=" + finalAnyValue);
         return anyValue ? Optional.of(sum) : Optional.empty();
+    }
+
+    
+
+
+
+
+    public com.blakube.bktops.plugin.provider.ValueKind getDetectedValueKind(@NotNull String placeholder) {
+        PlaceholderValueProvider provider = providers.get(placeholder);
+        return provider != null
+                ? provider.getDetectedValueKind()
+                : com.blakube.bktops.plugin.provider.ValueKind.UNKNOWN;
     }
 
     public Optional<String> getTeamName(@NotNull UUID anyMember) {

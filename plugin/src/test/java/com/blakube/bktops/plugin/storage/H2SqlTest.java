@@ -184,6 +184,38 @@ class H2SqlTest {
         assertEquals("uuid-6", top.get(14));
     }
 
+    private String positionSql() {
+        return "SELECT (SELECT COUNT(*) + 1 FROM " + TABLE + " WHERE top_value > t.top_value) as position " +
+               "FROM " + TABLE + " t WHERE identifier = ?";
+    }
+
+    private int position(String id) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(positionSql())) {
+            stmt.setString(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getInt("position") : -1;
+            }
+        }
+    }
+
+    @Test
+    void position_returnsRankForExistingRows() throws SQLException {
+        upsert("uuid-a", "PA", 300.0);
+        upsert("uuid-b", "PB", 900.0);
+        upsert("uuid-c", "PC", 50.0);
+
+        assertEquals(1, position("uuid-b"));
+        assertEquals(2, position("uuid-a"));
+        assertEquals(3, position("uuid-c"));
+    }
+
+    @Test
+    void position_returnsMinusOneForMissingIdentifier() throws SQLException {
+        upsert("uuid-a", "PA", 300.0);
+
+        assertEquals(-1, position("uuid-missing"));
+    }
+
     @Test
     void load_returnsOrderedByValueDesc() throws SQLException {
         upsert("uuid-a", "PA", 300.0);

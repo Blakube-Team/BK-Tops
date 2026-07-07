@@ -3,8 +3,8 @@ package com.blakube.bktops.plugin.hook.team.impl;
 import com.blakube.bktops.api.team.TeamHook;
 import com.blakube.bktops.plugin.service.team.TeamHookHelpService;
 import org.kingdoms.constants.group.Kingdom;
+import org.kingdoms.constants.player.KingdomPlayer;
 
-import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 
@@ -34,7 +34,7 @@ public final class KingdomsXHook implements TeamHook {
     @Override
     public Set<UUID> getTeamMembers(UUID anyTeamMember) {
         Set<UUID> members = Set.of();
-        Kingdom kingdom = Kingdom.getKingdom(anyTeamMember);
+        Kingdom kingdom = getKingdomOfPlayer(anyTeamMember);
         if(kingdom == null) return members;
 
         return kingdom.getMembers();
@@ -42,7 +42,7 @@ public final class KingdomsXHook implements TeamHook {
 
     @Override
     public String getTeamDisplayName(UUID anyTeamMember) {
-        Kingdom kingdom = Kingdom.getKingdom(anyTeamMember);
+        Kingdom kingdom = getKingdomOfPlayer(anyTeamMember);
         if(kingdom == null) return "";
 
         return kingdom.getName();
@@ -50,7 +50,14 @@ public final class KingdomsXHook implements TeamHook {
 
     @Override
     public boolean isTeamMember(UUID uuid) {
-        return Kingdom.getKingdom(uuid) != null;
+        return getKingdomOfPlayer(uuid) != null;
+    }
+
+    
+    
+    private Kingdom getKingdomOfPlayer(UUID playerId) {
+        KingdomPlayer kingdomPlayer = KingdomPlayer.getKingdomPlayer(playerId);
+        return kingdomPlayer == null ? null : kingdomPlayer.getKingdom();
     }
 
     @Override

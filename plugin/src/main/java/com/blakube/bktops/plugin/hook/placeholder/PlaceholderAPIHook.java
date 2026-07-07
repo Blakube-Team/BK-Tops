@@ -1,9 +1,8 @@
 package com.blakube.bktops.plugin.hook.placeholder;
 
 import com.blakube.bktops.api.config.ConfigType;
-import com.blakube.bktops.plugin.formatter.NumberFormatter;
-import com.blakube.bktops.plugin.formatter.NumberValueFormatter;
-import com.blakube.bktops.plugin.formatter.TimeValueFormatter;
+import com.blakube.bktops.plugin.formatter.TopValueFormatter;
+import com.blakube.bktops.plugin.formatter.TopValueFormatterProvider;
 import com.blakube.bktops.plugin.formatter.ValueFormatter;
 import com.blakube.bktops.plugin.service.config.ConfigService;
 import com.blakube.bktops.plugin.service.time.ObtainTimeService;
@@ -19,28 +18,18 @@ import com.blakube.bktops.api.top.Top;
 import com.blakube.bktops.api.top.TopEntry;
 
 import java.time.Duration;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class PlaceholderAPIHook extends PlaceholderExpansion {
-
-    private static final ValueFormatter DEFAULT_FORMATTER = new NumberValueFormatter(null);
 
     private final ConfigService configService;
     private final TimeFormatService timeFormatService;
     private final ObtainTimeService obtainTimeService = new ObtainTimeService();
 
-    private Map<String, ValueFormatter> modeFormatters;
-    private final Map<String, ValueFormatter> topFormatterCache = new ConcurrentHashMap<>();
-
     public PlaceholderAPIHook(ConfigService configService) {
         this.configService = configService;
         this.timeFormatService = new TimeFormatService(configService);
-        this.modeFormatters = buildModeFormatters();
     }
 
     @Override
@@ -70,6 +59,8 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 
     @Override
     public String onPlaceholderRequest(Player player, @NotNull String identifier) {
+        if (!TopAPIProvider.isAvailable()) return null;
+
         if (identifier.startsWith("team_")) {
             identifier = identifier.substring("team_".length());
         }
@@ -90,6 +81,29 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
             if (player == null) return notInTop();
             String topId = identifier.substring("myposition_".length());
             return handleMyPositionPlaceholder(player, topId);
+        }
+
+        if (identifier.startsWith("myvalue_") || identifier.startsWith("myvalue:")) {
+            if (player == null) return notInTop();
+
+            
+            String spec = identifier.substring("myvalue".length());
+            ValueFormatter inlineFormatter = null;
+            if (spec.charAt(0) == ':') {
+                int sep = spec.indexOf('_');
+                if (sep < 0) {
+                    return configService.provide(ConfigType.LANG).getString("invalid-placeholder.format", "Invalid format!");
+                }
+                TopValueFormatter formatters = TopValueFormatterProvider.getInstance();
+                if (formatters != null) inlineFormatter = formatters.forMode(spec.substring(1, sep));
+                spec = spec.substring(sep);
+            }
+
+            String topId = spec.substring(1);
+            if (topId.isEmpty()) {
+                return configService.provide(ConfigType.LANG).getString("invalid-placeholder.top-id", "Unknown topId!");
+            }
+            return handleMyValuePlaceholder(player, topId, inlineFormatter);
         }
 
         if (identifier.startsWith("displayname_")) {
@@ -125,17 +139,19 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 
         String typeStr = parts[0];
 
+        TopValueFormatter formatters = TopValueFormatterProvider.getInstance();
+
         ValueFormatter inlineFormatter = null;
         if (typeStr.contains(":")) {
             String[] typeParts = typeStr.split(":", 2);
             typeStr = typeParts[0];
-            inlineFormatter = modeFormatters.get(typeParts[1].toUpperCase());
+            inlineFormatter = formatters != null ? formatters.forMode(typeParts[1]) : null;
         }
 
-        
+
         int topIdStart = 1;
-        if (inlineFormatter == null && parts.length >= 4) {
-            ValueFormatter modeMatch = modeFormatters.get(parts[1].toUpperCase());
+        if (inlineFormatter == null && parts.length >= 4 && formatters != null) {
+            ValueFormatter modeMatch = formatters.forMode(parts[1]);
             if (modeMatch != null) {
                 inlineFormatter = modeMatch;
                 topIdStart = 2;
@@ -185,6 +201,11 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
 
         ValueFormatter formatter = inlineFormatter != null ? inlineFormatter : resolveTopFormatter(top);
         return formatter.format(entry.getValue());
+    }
+
+    private ValueFormatter resolveTopFormatter(@NotNull Top<?> top) {
+        TopValueFormatter formatters = TopValueFormatterProvider.getInstance();
+        return formatters != null ? formatters.resolve(top) : v -> String.valueOf((long) v);
     }
 
     private String handleSpacedPlaceholder(@NotNull String topId, int position) {
@@ -312,38 +333,38 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
                 : String.valueOf(position);
     }
 
+    private String handleMyValuePlaceholder(@NotNull Player player, @NotNull String topId,
+                                            @Nullable ValueFormatter inlineFormatter) {
+        TopAPI api = TopAPIProvider.getInstance();
+        Top<?> top = api.getTop(topId);
+        if (top == null) {
+            return configService.provide(ConfigType.LANG).getString("invalid-placeholder.top-id", "Unknown topId!");
+        }
+
+        @SuppressWarnings("unchecked")
+        Top<UUID> uuidTop = (Top<UUID>) top;
+        int myPos = uuidTop.getPosition(player.getUniqueId());
+        if (myPos == -1) return notInTop();
+
+        Optional<? extends TopEntry<?>> mine = top.getEntry(myPos);
+        if (mine.isEmpty()) return notInTop();
+
+        ValueFormatter formatter = inlineFormatter != null ? inlineFormatter : resolveTopFormatter(top);
+        return formatter.format(mine.get().getValue());
+    }
+
     private String notInTop() {
         return configService.provide(ConfigType.LANG).getString("position.not-in-top", "N/A");
     }
 
     private String stripMinecraftColors(@NotNull String text) {
-        String result = text.replaceAll("[&§][0-9a-fk-or]", "");
-        result = result.replaceAll("[&§]x([&§][0-9a-f]){6}", "");
+        String result = text.replaceAll("[&§]x([&§][0-9a-fA-F]){6}", "");
+        result = result.replaceAll("[&§][0-9a-fk-orA-FK-OR]", "");
         result = result.replaceAll("<[^>]+>", "");
         return result;
     }
 
-    private ValueFormatter resolveTopFormatter(@NotNull Top<?> top) {
-        return topFormatterCache.computeIfAbsent(top.getId(), k -> {
-            String format = top.getConfig().getValueFormat();
-            if (format == null) return DEFAULT_FORMATTER;
-            ValueFormatter f = modeFormatters.get(format.toUpperCase());
-            return f != null ? f : DEFAULT_FORMATTER;
-        });
-    }
-
-    private Map<String, ValueFormatter> buildModeFormatters() {
-        Map<String, ValueFormatter> map = new HashMap<>();
-        map.put("EXACT",           new NumberValueFormatter(NumberFormatter.FormatMode.EXACT));
-        map.put("ROUNDED",         new NumberValueFormatter(NumberFormatter.FormatMode.ROUNDED));
-        map.put("COMPACT",         new NumberValueFormatter(NumberFormatter.FormatMode.COMPACT));
-        map.put("COMPACT_ROUNDED", new NumberValueFormatter(NumberFormatter.FormatMode.COMPACT_ROUNDED));
-        map.put("TIME",            new TimeValueFormatter(configService.provide(ConfigType.CONFIG)));
-        return Collections.unmodifiableMap(map);
-    }
-
     public void reload() {
-        modeFormatters = buildModeFormatters();
-        topFormatterCache.clear();
+        
     }
 }

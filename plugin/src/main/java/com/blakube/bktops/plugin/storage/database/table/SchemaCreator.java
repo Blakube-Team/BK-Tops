@@ -105,6 +105,45 @@ public final class SchemaCreator {
         }
     }
 
+    public static void createPendingRewardsTable() {
+        String tableName = getPendingRewardsTableName();
+
+        if (tableExists(tableName)) {
+            return;
+        }
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement()) {
+
+            String sql = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
+                    "id VARCHAR(36) PRIMARY KEY, " +
+                    "batch_id VARCHAR(36) NOT NULL, " +
+                    "top_id VARCHAR(255) NOT NULL, " +
+                    "player_uuid VARCHAR(36) NOT NULL, " +
+                    "player_name VARCHAR(255) NULL, " +
+                    "position INT NOT NULL, " +
+                    "score DOUBLE NOT NULL, " +
+                    "action_type VARCHAR(16) NOT NULL, " +
+                    "payload TEXT NOT NULL, " +
+                    "amount INT NOT NULL, " +
+                    "created_at BIGINT NOT NULL, " +
+                    "delivered_at BIGINT NULL" +
+                    ")";
+
+            stmt.executeUpdate(sql);
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pending_rewards_player ON " +
+                    tableName + "(player_uuid, delivered_at)");
+            stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pending_rewards_batch ON " +
+                    tableName + "(batch_id)");
+
+            Bukkit.getLogger().info("[BK-Tops] Created pending rewards table: " + tableName);
+
+        } catch (SQLException e) {
+            Bukkit.getLogger().severe("[BK-Tops] Error creating pending rewards table: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
     public static boolean dropTopTable(@NotNull String topId) {
         String tableName = getTopTableName(topId);
 
@@ -202,6 +241,11 @@ public final class SchemaCreator {
     @NotNull
     public static String getMetaTableName(@NotNull String topId) {
         return "meta_" + sanitizeTableName(topId);
+    }
+
+    @NotNull
+    public static String getPendingRewardsTableName() {
+        return "pending_rewards";
     }
 
     @NotNull

@@ -37,6 +37,8 @@ public class ConfigService {
         provide(ConfigType.CONFIG);
         provide(ConfigType.HOOKS);
         provide(ConfigType.TOPS);
+        provide(ConfigType.NOTIFICATIONS);
+        provide(ConfigType.DISCORD);
     }
 
     private void updateConfigsIfNeeded() {
@@ -157,5 +159,7 @@ public class ConfigService {
         reload(ConfigType.CONFIG);
         reload(ConfigType.HOOKS);
         reload(ConfigType.TOPS);
+        reload(ConfigType.NOTIFICATIONS);
+        reload(ConfigType.DISCORD);
     }
 }

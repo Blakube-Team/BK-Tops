@@ -12,8 +12,9 @@ import com.blakube.bktops.api.storage.config.TopConfig;
 import com.blakube.bktops.api.top.Top;
 import com.blakube.bktops.api.top.TopEntry;
 import com.blakube.bktops.plugin.cache.PlayerNameCache;
-import com.blakube.bktops.plugin.formatter.NumberFormatter;
-import com.blakube.bktops.plugin.formatter.NumberFormatterProvider;
+import com.blakube.bktops.plugin.debug.Debug;
+import com.blakube.bktops.plugin.formatter.TopValueFormatterProvider;
+import com.blakube.bktops.plugin.formatter.ValueFormatter;
 import com.blakube.bktops.plugin.processor.DefaultTopProcessor;
 import com.blakube.bktops.plugin.queue.PriorityProcessingQueue;
 import com.blakube.bktops.plugin.resolver.PlayerNameResolver;
@@ -37,6 +38,7 @@ public class DefaultTop<K> implements Top<K> {
     protected final ProcessingQueue<K> queue;
     protected final TopProcessor<K> processor;
     protected final TopEntryCache<K> cache;
+    private final Object updateLock = new Object();
 
     public DefaultTop(@NotNull JavaPlugin plugin,
                       @NotNull String id,
@@ -89,15 +91,26 @@ public class DefaultTop<K> implements Top<K> {
     protected void onBatchUpdateResult(@NotNull List<UpdateResult<K>> results) {
         if (results.isEmpty()) return;
 
-        List<EventEntry<K>> events = new ArrayList<>(results.size());
-        NumberFormatter formatter = NumberFormatterProvider.isAvailable() ? NumberFormatterProvider.getInstance() : null;
+        synchronized (updateLock) {
+            handleBatchUpdateResult(results);
+        }
+    }
 
+    private void handleBatchUpdateResult(@NotNull List<UpdateResult<K>> results) {
+        ValueFormatter formatter = TopValueFormatterProvider.isAvailable()
+                ? TopValueFormatterProvider.getInstance().resolve(this)
+                : null;
+
+        
+        
+        
+        List<Pending<K>> pending = new ArrayList<>(results.size());
         for (UpdateResult<K> result : results) {
             if (!result.isSuccess() || result.getNewValue() == null) continue;
             if (result.getNewValue() == 0.0 && !config.isAllowZeroValues()) continue;
 
             K identifier = result.getIdentifier();
-            Optional<TopEntry<K>> oldEntry  = cache.getEntryByIdentifier(identifier);
+            Optional<TopEntry<K>> oldEntry = cache.getEntryByIdentifier(identifier);
             Double  oldValue    = oldEntry.map(TopEntry::getValue).orElse(null);
             Integer oldPosition = oldEntry.map(TopEntry::getPosition).orElse(null);
 
@@ -106,29 +119,47 @@ public class DefaultTop<K> implements Top<K> {
                     : oldEntry.map(TopEntry::getDisplayName).orElse(null);
             if (displayName == null) continue;
 
-            List<K> staleIds = cache.removeByDisplayName(displayName, identifier);
+            pending.add(new Pending<>(identifier, displayName, result.getNewValue(), oldValue, oldPosition));
+        }
+        if (pending.isEmpty()) return;
+
+        
+        for (Pending<K> p : pending) {
+            List<K> staleIds = cache.removeByDisplayName(p.displayName, p.identifier);
             for (K staleId : staleIds) {
                 CompletableFuture.runAsync(() -> storage.remove(id, staleId), DatabaseExecutors.DB_EXECUTOR);
             }
+            cache.updateEntry(p.identifier, p.displayName, p.newValue, config.getSize());
+        }
 
-            int newPositionRaw = cache.updateEntry(identifier, displayName, result.getNewValue(), config.getSize());
-            Integer newPosition = newPositionRaw == -1 ? null : newPositionRaw;
+        
+        
+        List<EventEntry<K>> events = new ArrayList<>(pending.size());
+        for (Pending<K> p : pending) {
+            int finalPosRaw = cache.getPosition(p.identifier);
+            Integer newPosition = finalPosRaw == -1 ? null : finalPosRaw;
 
-            if (oldPosition == null && newPosition == null) continue;
-            boolean changed = !Objects.equals(oldValue, result.getNewValue())
-                           || !Objects.equals(oldPosition, newPosition);
-            if (!changed) continue;
+            if (p.oldPosition == null && newPosition == null) continue;
+            boolean positionChanged = !Objects.equals(p.oldPosition, newPosition);
+            if (!positionChanged) {
+                Debug.log("[{}] No change for {} (pos {}, value {}), skipping event",
+                        id, p.displayName, newPosition, p.newValue);
+                continue;
+            }
 
-            String fmtOld = (formatter != null && oldValue != null)         ? formatter.format(oldValue)             : null;
-            String fmtNew = (formatter != null && result.getNewValue() != 0) ? formatter.format(result.getNewValue()) : null;
+            String fmtOld = (formatter != null && p.oldValue != null) ? formatter.format(p.oldValue) : null;
+            String fmtNew = (formatter != null)                       ? formatter.format(p.newValue) : null;
 
-            events.add(new EventEntry<>(identifier, displayName, oldValue, result.getNewValue(),
-                                       oldPosition, newPosition, fmtOld, fmtNew));
+            Debug.log("[{}] Position update for {}: pos {} -> {}, value {} -> {} (fmt {} -> {})",
+                    id, p.displayName, p.oldPosition, newPosition, p.oldValue, p.newValue, fmtOld, fmtNew);
+
+            events.add(new EventEntry<>(p.identifier, p.displayName, p.oldValue, p.newValue,
+                                       p.oldPosition, newPosition, fmtOld, fmtNew));
         }
 
         if (events.isEmpty()) return;
 
-        
+
         Bukkit.getScheduler().runTask(plugin, () -> {
             for (EventEntry<K> e : events) {
                 TopEventDispatcher.firePositionUpdate(
@@ -138,6 +169,9 @@ public class DefaultTop<K> implements Top<K> {
             }
         });
     }
+
+    private record Pending<K>(K identifier, String displayName, double newValue,
+                              Double oldValue, Integer oldPosition) {}
 
     private static final class EventEntry<V> {
         final V       identifier;

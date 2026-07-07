@@ -1,27 +1,47 @@
+############################################
+# BK-Tops · Language strings
+#
+# Localized command feedback and fallback messages used by the plugin.
+############################################
 
 message:
+  # Command feedback for top resets.
   top-reset: "<green>The top has been reset correctly!"
+  # Shown when a requested top id does not exist.
   top-not-found: "<red>No top with such id!"
+  # Shown when the sender lacks the required permission.
   no-permission: "<red>You do not have permission to perform this action."
+  # Shown after reloading configs.
   config-reloaded: "<green>Configurations reloaded correctly!"
 
 time-format:
+  # Singular suffixes used by the time formatter.
   day: "d"
   hour: "h"
   minute: "m"
   second: "s"
+  # Separator between formatted units.
   split: " "
 
 position:
+  # Shown when the player is not ranked.
   not-in-top: "<red>You are not in the top!"
+  # Placeholder used when there is no higher entry.
   no-neighbor-above: "---"
+  # Placeholder used when there is no lower entry.
   no-neighbor-below: "---"
 
 invalid-placeholder:
+  # Generic invalid placeholder format.
   format: "Invalid format!"
+  # Generic invalid placeholder type.
   type: "Invalid type!"
+  # Invalid top id placeholder.
   top-id: "Unknown topId!"
+  # Invalid position placeholder.
   position: "Invalid position!"
+  # Placeholder used when no data exists.
   no-data: "-------"
 
+# DO NOT TOUCH THIS!
 config-version: 4

@@ -16,6 +16,8 @@ dependencies {
     implementation("dev.dejvokep:boosted-yaml:1.3.6")
     implementation("com.h2database:h2:2.1.214")
     implementation("com.zaxxer:HikariCP:7.0.2")
+    implementation("com.saicone.rtag:rtag:1.5.11")
+    implementation("com.saicone.rtag:rtag-item:1.5.11")
 
     compileOnly("net.kyori:adventure-api:4.17.0")
     compileOnly("net.kyori:adventure-platform-bukkit:4.4.1")
@@ -48,6 +50,7 @@ tasks {
         relocate("org.h2", "com.blakube.bktops.libs.h2")
         relocate("revxrsal.commands", "com.blakube.bktops.libs.lamp")
         relocate("dev.dejvokep.boostedyaml", "com.blakube.bktops.libs.boostedyaml")
+        relocate("com.saicone.rtag", "com.blakube.bktops.libs.rtag")
 
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 

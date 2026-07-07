@@ -114,16 +114,16 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
     }
 
     public CompletableFuture<Void> resetAsync() {
-        cache.setEntries(Collections.emptyList());
-        queue.clear();
+        com.blakube.bktops.plugin.debug.Debug.log("[{}] Resetting timed top (schedule={})", id, resetSchedule.getType());
+        List<TopEntry<K>> previousEntries = getEntries();
 
         CompletableFuture<Map<K, Double>> snapshotFuture = new CompletableFuture<>();
         if (Bukkit.isPrimaryThread()) {
-            snapshotFuture.complete(collectCurrentSnapshots());
+            snapshotFuture.complete(collectCurrentSnapshots(previousEntries));
         } else {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 try {
-                    snapshotFuture.complete(collectCurrentSnapshots());
+                    snapshotFuture.complete(collectCurrentSnapshots(previousEntries));
                 } catch (Throwable t) {
                     snapshotFuture.completeExceptionally(t);
                 }
@@ -132,12 +132,14 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
 
         return snapshotFuture.thenComposeAsync(snapshots -> {
             try {
-                if (!snapshots.isEmpty() && valueProvider instanceof TimedValueProvider) {
+                if (valueProvider instanceof TimedValueProvider) {
                     @SuppressWarnings("unchecked")
                     TimedValueProvider<K> timedProvider = (TimedValueProvider<K>) valueProvider;
-                    timedProvider.updateSnapshotsBatch(snapshots);
+                    timedProvider.resetSnapshots(snapshots);
                 }
 
+                cache.setEntries(Collections.emptyList());
+                queue.clear();
                 storage.clear(id);
 
                 long previousStart = this.startTime;
@@ -158,7 +160,8 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
                                 resetSchedule.getType(),
                                 fPreviousStart,
                                 fStartTime,
-                                fNextReset
+                                fNextReset,
+                                previousEntries
                         )
                 );
 
@@ -170,7 +173,7 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
         }, DatabaseExecutors.DB_EXECUTOR);
     }
 
-    private Map<K, Double> collectCurrentSnapshots() {
+    private Map<K, Double> collectCurrentSnapshots(@NotNull List<TopEntry<K>> entries) {
         if (!(valueProvider instanceof TimedValueProvider)) return Map.of();
 
         @SuppressWarnings("unchecked")
@@ -178,7 +181,6 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
         ValueProvider<K> baseProvider = timedProvider.getBaseProvider();
         if (baseProvider == null) return Map.of();
 
-        List<TopEntry<K>> entries = getEntries();
         if (entries.isEmpty()) return Map.of();
 
         Map<K, Double> result = new HashMap<>(entries.size());
@@ -202,25 +204,24 @@ public class DefaultTimedTop<K> extends DefaultTop<K> implements TimedTop<K> {
             } catch (Exception ignored) {}
         }
 
+        java.time.ZonedDateTime zNow = now.atZone(ZoneId.systemDefault());
         Instant next;
         switch (resetSchedule.getType()) {
             case HOURLY:
-                next = now.truncatedTo(ChronoUnit.HOURS).plus(1, ChronoUnit.HOURS);
+                next = zNow.truncatedTo(ChronoUnit.HOURS).plusHours(1).toInstant();
                 break;
             case DAILY:
-                next = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS);
+                next = zNow.truncatedTo(ChronoUnit.DAYS).plusDays(1).toInstant();
                 break;
             case WEEKLY:
-                next = now.truncatedTo(ChronoUnit.DAYS);
-                int daysUntilMonday = (8 - next.atZone(ZoneId.systemDefault()).getDayOfWeek().getValue()) % 7;
-                if (daysUntilMonday == 0 && now.isAfter(next)) {
+                int daysUntilMonday = (8 - zNow.getDayOfWeek().getValue()) % 7;
+                if (daysUntilMonday == 0) {
                     daysUntilMonday = 7;
                 }
-                next = next.plus(daysUntilMonday, ChronoUnit.DAYS);
+                next = zNow.truncatedTo(ChronoUnit.DAYS).plusDays(daysUntilMonday).toInstant();
                 break;
             case MONTHLY:
-                next = now.truncatedTo(ChronoUnit.DAYS)
-                        .atZone(ZoneId.systemDefault())
+                next = zNow.truncatedTo(ChronoUnit.DAYS)
                         .withDayOfMonth(1)
                         .plusMonths(1)
                         .toInstant();

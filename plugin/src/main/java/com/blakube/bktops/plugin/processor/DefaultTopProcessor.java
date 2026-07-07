@@ -10,10 +10,10 @@ import com.blakube.bktops.api.result.UpdateResult;
 import com.blakube.bktops.api.storage.TopStorage;
 import com.blakube.bktops.api.storage.config.TopConfig;
 import com.blakube.bktops.plugin.condition.ConditionEvaluator;
+import com.blakube.bktops.plugin.debug.Debug;
 import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
 import com.blakube.bktops.plugin.storage.database.dao.TopStorageDAO;
 import com.blakube.bktops.plugin.storage.wrapper.TopStorageImpl;
-import com.blakube.bktops.api.config.ConfigType;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -39,7 +39,6 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
     private final Consumer<List<UpdateResult<K>>> batchResultConsumer;
     private final Consumer<K> entryRemover;
     private final AtomicBoolean enabled;
-    private final boolean debug;
 
     public DefaultTopProcessor(@NotNull JavaPlugin plugin,
                                @NotNull String topId,
@@ -60,7 +59,6 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
         this.batchResultConsumer = Objects.requireNonNull(batchResultConsumer, "batchResultConsumer cannot be null");
         this.entryRemover        = Objects.requireNonNull(entryRemover,        "entryRemover cannot be null");
         this.enabled             = new AtomicBoolean(true);
-        this.debug               = plugin.getConfig().getBoolean("debug", false);
     }
 
     @Override
@@ -112,13 +110,13 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
         for (QueueEntry<K> entry : entries) {
             K identifier = entry.getIdentifier();
             if (shouldBypass(identifier)) {
-                if (debug) plugin.getLogger().info("[BK-Tops] [DEBUG] Skipping " + identifier + " for " + topId + " (Bypass permission)");
+                Debug.log("[{}] Skipping {} (bypass permission)", topId, identifier);
                 continue;
             }
 
             if (isPlayerTop && !config.getConditionSet().isEmpty() && identifier instanceof UUID uuid) {
                 if (!ConditionEvaluator.passes(config.getConditionSet(), uuid)) {
-                    if (debug) plugin.getLogger().info("[BK-Tops] [DEBUG] Skipping " + identifier + " for " + topId + " (Failed conditions)");
+                    Debug.log("[{}] Skipping {} (failed conditions), removing from top", topId, identifier);
                     entryRemover.accept(identifier);
                     continue;
                 }
@@ -126,14 +124,15 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
 
             Double value = valueProvider.getValue(identifier);
             if (value == null) {
-                if (debug) plugin.getLogger().info("[BK-Tops] [DEBUG] Skipping " + identifier + " for " + topId + " (Null value)");
+                Debug.log("[{}] Skipping {} (null value from {})", topId, identifier, valueProvider.getName());
                 continue;
             }
             if (value == 0.0 && !config.isAllowZeroValues()) {
-                if (debug) plugin.getLogger().info("[BK-Tops] [DEBUG] Skipping " + identifier + " for " + topId + " (Zero value)");
+                Debug.log("[{}] Skipping {} (zero value, allow-zero=false)", topId, identifier);
                 continue;
             }
 
+            Debug.log("[{}] Collected value {} for {}", topId, value, identifier);
             preResolved.add(new PreResolved<>(identifier, value));
         }
         return preResolved;

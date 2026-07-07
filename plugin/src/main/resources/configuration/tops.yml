@@ -1,50 +1,101 @@
+############################################
+# BK-Tops · Tops
+#
+# Top definitions, providers, queue behavior, and timed reward settings.
+############################################
+
+# `value-format` controls how the value is parsed and rendered in
+# `%bktops_value_<top>_<pos>%`.
+#   EXACT | ROUNDED | COMPACT | COMPACT_ROUNDED | TIME
+# Leaving it unset (or AUTO) enables auto-detection:
+#  - duration-like strings are treated as time
+#  - everything else is treated as a number
+# Lowercase `m` means minutes, uppercase `M` means million.
 
 money:
+  # Permanent money leaderboard.
   type: normal
   size: 15
   provider: "%vault_eco_balance%"
   queues:
+    # Online queue updates players that are currently connected.
     online: false
     online-interval: 288000
+    # Rotative queue walks offline entries in chunks.
     rotative: false
     rotative-size: 50
     rotative-interval: 20
   processing:
+    # Number of entries processed per batch.
     batch-size: 5
+    # Delay between batches, in ticks.
     tick-delay: 20
+    # Whether a score of 0 is allowed to enter the top.
     allow-zero: false
 
 play_time:
+  # Permanent playtime leaderboard.
   type: normal
   size: 15
+  # Force duration rendering/parsing for time-based placeholders.
   value-format: TIME
-  provider: "%statistic_play_time%"
+  # Use the already formatted placeholder output.
+  # `%statistic_play_time%` returns ticks, so reading it raw would inflate the value.
+  provider: "%statistic_time_played%"
   queues:
+    # Online queue updates players that are currently connected.
     online: false
     online-interval: 288000
+    # Rotative queue walks offline entries in chunks.
     rotative: false
   processing:
+    # Number of entries processed per batch.
     batch-size: 5
 
 kills_perma:
+  # Permanent kills leaderboard.
   type: normal
   size: 15
   provider: "%statistic_player_kills%"
   queues:
+    # Online queue updates players that are currently connected.
     online: false
     online-interval: 288000
+    # Rotative queue walks offline entries in chunks.
     rotative: false
   processing:
+    # Number of entries processed per batch.
     batch-size: 5
 
 kills_monthly:
+  # Timed monthly kills leaderboard with rewards.
   type: timed
   size: 15
+  # Reset cadence for this top.
   reset: "monthly"
   provider: "%statistic_player_kills%"
+  rewards:
+    # Toggle reward generation on reset.
+    enabled: false
+    # For team-timed tops: `entry` rewards only the ranked UUID, `members` rewards every member.
+    team-reward-mode: entry
+    positions:
+      # First place rewards.
+      "1":
+        commands:
+          - "eco give {player} 10000"
+        items: {}
+      # Second and third place rewards.
+      "2-3":
+        commands:
+          - "eco give {player} 5000"
+        items: {}
   queues:
+    # Online queue updates players that are currently connected.
     online: false
     online-interval: 288000
+    # Rotative queue walks offline entries in chunks.
     rotative: false
   processing:
+    # Number of entries processed per batch.
     batch-size: 5

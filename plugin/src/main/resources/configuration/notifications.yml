@@ -1,0 +1,238 @@
+############################################
+# BK-Tops · Notifications
+#
+# In-game notifications fired when a player's position in a top changes
+# or when a timed top is reset. Discord webhooks are configured separately
+# in discord.yml.
+#
+# Placeholders:
+#  - {player}:       player name involved in the event (if any)
+#  - {position}:     new position number
+#  - {old_position}: previous position number
+#  - {top_id}:       internal top identifier
+#  - {top_name}:     display name of the top/leaderboard
+#  - {score}:        new (formatted) score/value
+#  - {old_score}:    previous (formatted) score/value
+#
+# Notes:
+#  - All messages support legacy '&' color codes and MiniMessage tags.
+#  - PlaceholderAPI is resolved per-player when the message targets a player.
+#  - audience: "all" (every online player), "player" (only the involved player),
+#              or "world" (players in the world of the involved player).
+############################################
+
+enabled: true
+
+events:
+  # Fired when a timed top is reset (e.g., daily/weekly/monthly wipe)
+  timed-top-reset:
+    enabled: true
+    audience: all
+    chat:
+      enabled: true
+      lines:
+        - "&e&lTops &8» &7The &b{top_name}&7 leaderboard has been &creset&7!"
+    title:
+      enabled: true
+      title: "&b{top_name}"
+      subtitle: "&7Leaderboard has been &creset&7!"
+      fade-in: 10
+      stay: 40
+      fade-out: 10
+    actionbar:
+      enabled: false
+      text: "&7{top_name} was reset"
+    sound:
+      enabled: true
+      name: "ENTITY_PLAYER_LEVELUP"
+      volume: 1.0
+      pitch: 1.2
+
+  # Fired when a player receives pending rewards from a timed top reset.
+  reward-delivered:
+    enabled: true
+    audience: player
+    chat:
+      enabled: true
+      lines:
+        - "&e&lTops &8» &aYou received your reward for &b{top_name}&7, position &e#{position}&7!"
+    title:
+      enabled: false
+      title: "&aReward received"
+      subtitle: "&b{top_name} &7#&e{position}"
+      fade-in: 10
+      stay: 40
+      fade-out: 10
+    actionbar:
+      enabled: true
+      text: "&aReward received: &b{top_name} &7#&e{position}"
+    sound:
+      enabled: true
+      name: "ENTITY_PLAYER_LEVELUP"
+      volume: 1.0
+      pitch: 1.4
+
+  # Fired when a player's position changes in a top.
+  # The following sub-cases are evaluated in order; the first matching is used.
+  top-position-update:
+    enabled: true
+    cases:
+      # Hit Top 1 from any other position (including previously unranked)
+      hit-first:
+        enabled: true
+        when:
+          position: 1
+          old-position:
+            not-equals: 1
+        audience: all
+        chat:
+          enabled: true
+          lines:
+            - "&e&lTops &8» &a&l{player} &7just took &e&l#1 &7on &b{top_name}&7 with &f{score}&7!"
+        title:
+          enabled: true
+          title: "&a&lNEW #1"
+          subtitle: "&f{player} &7on &b{top_name}"
+          fade-in: 10
+          stay: 50
+          fade-out: 10
+        actionbar:
+          enabled: false
+          text: "&a{player} is now #1 on {top_name}!"
+        sound:
+          enabled: true
+          name: "UI_TOAST_CHALLENGE_COMPLETE"
+          volume: 1.0
+          pitch: 1.0
+
+      # Entered the podium (positions 1-3) from outside podium
+      podium-enter:
+        enabled: true
+        when:
+          position-range: [1, 3]
+          old-position-range: [4, 999999]
+        audience: all
+        chat:
+          enabled: true
+          lines:
+            - "&e&lTops &8» &a{player} &7entered the &6podium &7at &e#{position} &7on &b{top_name}&7!"
+        title:
+          enabled: false
+          title: "&6Podium!"
+          subtitle: "&a{player} &7is now &e#{position}"
+          fade-in: 10
+          stay: 40
+          fade-out: 10
+        actionbar:
+          enabled: true
+          text: "&a{player} &7is now &e#{position} &7on &b{top_name}"
+        sound:
+          enabled: true
+          name: "ENTITY_EXPERIENCE_ORB_PICKUP"
+          volume: 1.0
+          pitch: 1.2
+
+      # Improved position (lower number) but not first and not a new podium entry
+      position-improved:
+        enabled: true
+        when:
+          improved: true
+        audience: player
+        chat:
+          enabled: true
+          lines:
+            - "&7You improved your &b{top_name} &7rank to &e#{position}&7 (&7was &c#{old_position}&7)."
+        title:
+          enabled: false
+          title: "&aImproved!"
+          subtitle: "&7Now &e#{position} &7on &b{top_name}"
+          fade-in: 10
+          stay: 30
+          fade-out: 10
+        actionbar:
+          enabled: true
+          text: "&aRank up: &e#{position} &7(&c#{old_position}&7)"
+        sound:
+          enabled: true
+          name: "BLOCK_NOTE_BLOCK_PLING"
+          volume: 1.0
+          pitch: 1.3
+
+      # Lost position (higher number)
+      position-lost:
+        enabled: true
+        when:
+          worsened: true
+        audience: player
+        chat:
+          enabled: true
+          lines:
+            - "&7You lost rank on &b{top_name}&7: now &e#{position}&7 (was &a#{old_position}&7). Keep trying!"
+        title:
+          enabled: false
+          title: "&cRank Down"
+          subtitle: "&7Now &e#{position} &7on &b{top_name}"
+          fade-in: 10
+          stay: 30
+          fade-out: 10
+        actionbar:
+          enabled: false
+          text: "&cRank down to &e#{position}"
+        sound:
+          enabled: true
+          name: "ENTITY_VILLAGER_NO"
+          volume: 1.0
+          pitch: 0.8
+
+      # New entry to the leaderboard (previously unranked)
+      new-entry:
+        enabled: true
+        when:
+          old-position: none
+        audience: all
+        chat:
+          enabled: true
+          lines:
+            - "&e&lTops &8» &a{player} &7entered &b{top_name} &7at &e#{position}&7 with &f{score}&7!"
+        title:
+          enabled: false
+          title: "&aNew Entry"
+          subtitle: "&a{player} &7is now &e#{position}"
+          fade-in: 10
+          stay: 30
+          fade-out: 10
+        actionbar:
+          enabled: false
+          text: "&a{player} entered at &e#{position}"
+        sound:
+          enabled: true
+          name: "BLOCK_NOTE_BLOCK_BELL"
+          volume: 1.0
+          pitch: 1.1
+
+      # Generic catch-all for any other position update
+      generic:
+        enabled: false
+        audience: player
+        chat:
+          enabled: true
+          lines:
+            - "&7Your &b{top_name} &7rank changed to &e#{position}&7 (was &7#{old_position}&7)."
+        title:
+          enabled: false
+          title: "&eRank Update"
+          subtitle: "&7Now &e#{position}"
+          fade-in: 10
+          stay: 30
+          fade-out: 10
+        actionbar:
+          enabled: false
+          text: "&e#{position} on {top_name}"
+        sound:
+          enabled: false
+          name: ""
+          volume: 1.0
+          pitch: 1.0
+
+# DO NOT TOUCH THIS!
+config-version: 2

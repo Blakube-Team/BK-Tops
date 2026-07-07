@@ -35,7 +35,7 @@ public final class TownyHook implements TeamHook {
     @Override
     public Set<UUID> getTeamMembers(UUID anyTeamMember) {
         Set<UUID> members = Set.of();
-        Town town = TownyAPI.getInstance().getTown(anyTeamMember);
+        Town town = getTownOfPlayer(anyTeamMember);
         if(town == null) return members;
 
         return town.getResidents().stream().map(Resident::getUUID).collect(java.util.stream.Collectors.toSet());
@@ -43,7 +43,7 @@ public final class TownyHook implements TeamHook {
 
     @Override
     public String getTeamDisplayName(UUID anyTeamMember) {
-        Town town = TownyAPI.getInstance().getTown(anyTeamMember);
+        Town town = getTownOfPlayer(anyTeamMember);
         if(town == null) return "";
 
         return town.getName();
@@ -51,8 +51,14 @@ public final class TownyHook implements TeamHook {
 
     @Override
     public boolean isTeamMember(UUID uuid) {
-        Town town = TownyAPI.getInstance().getTown(uuid);
-        return town != null;
+        return getTownOfPlayer(uuid) != null;
+    }
+
+    
+    
+    private Town getTownOfPlayer(UUID playerId) {
+        Resident resident = TownyAPI.getInstance().getResident(playerId);
+        return resident == null ? null : resident.getTownOrNull();
     }
 
     @Override

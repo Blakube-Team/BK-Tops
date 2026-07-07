@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class TimedValueProvider<K> implements ValueProvider<K> {
+public final class TimedValueProvider<K> implements ValueProvider<K>, DetectableValueKind {
 
     private final String topId;
     private final ValueProvider<K> baseProvider;
@@ -73,6 +73,10 @@ public final class TimedValueProvider<K> implements ValueProvider<K> {
 
         double result = Math.max(0.0, currentValue - snapshotValue);
 
+        Double finalSnapshot = snapshotValue;
+        Double finalCurrent  = currentValue;
+        com.blakube.bktops.plugin.debug.Debug.log(() -> "[" + topId + "] Timed delta for " + identifier
+                + ": current " + finalCurrent + " - snapshot " + finalSnapshot + " = " + result);
         return result;
     }
 
@@ -108,6 +112,13 @@ public final class TimedValueProvider<K> implements ValueProvider<K> {
         return baseProvider.isAvailable();
     }
 
+    @Override
+    @NotNull
+    public ValueKind getDetectedValueKind() {
+        
+        return baseProvider instanceof DetectableValueKind d ? d.getDetectedValueKind() : ValueKind.UNKNOWN;
+    }
+
     @NotNull
     public ValueProvider<K> getBaseProvider() {
         return baseProvider;
@@ -122,6 +133,22 @@ public final class TimedValueProvider<K> implements ValueProvider<K> {
         snapshotCache.putAll(snapshots);
         currentValueCache.clear();
         CompletableFuture.runAsync(() -> snapshotDAO.saveBatch(snapshots), DatabaseExecutors.DB_EXECUTOR);
+    }
+
+    
+
+
+
+
+
+    public void resetSnapshots(@NotNull Map<K, Double> snapshots) {
+        snapshotCache.clear();
+        currentValueCache.clear();
+        snapshotDAO.clearSnapshots();
+        if (!snapshots.isEmpty()) {
+            snapshotCache.putAll(snapshots);
+            snapshotDAO.saveBatch(snapshots);
+        }
     }
 
     public void clearCache() {

@@ -49,9 +49,15 @@ public final class ProcessorScheduler {
         if (!futures.isEmpty()) {
             plugin.getLogger().info("Waiting for " + futures.size() + " timed providers to load async...");
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .thenRun(() -> Bukkit.getScheduler().runTask(plugin, () -> startTasks(timedProviders)))
-                    .exceptionally(ex -> {
-                        plugin.getLogger().severe("Error initializing providers: " + ex.getMessage());
+                    .handle((unused, ex) -> {
+                        if (ex != null) {
+                            plugin.getLogger().severe("Error initializing providers: " + ex.getMessage());
+                        }
+                        
+                        
+                        if (plugin.isEnabled()) {
+                            Bukkit.getScheduler().runTask(plugin, () -> startTasks(timedProviders));
+                        }
                         return null;
                     });
         } else {
@@ -129,6 +135,8 @@ public final class ProcessorScheduler {
                             .map(Player::getUniqueId)
                             .toList();
                     if (onlineUUIDs.isEmpty()) return;
+                    com.blakube.bktops.plugin.debug.Debug.log("[{}] Enqueuing {} online player(s) (online_periodic)",
+                            top.getId(), onlineUUIDs.size());
                     top.enqueue(onlineUUIDs, Priority.HIGH, "online_periodic");
                 }
             }.runTaskTimer(plugin, 20L, period);

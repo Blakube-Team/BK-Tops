@@ -2,18 +2,28 @@ package com.blakube.bktops.plugin.command;
 
 import com.blakube.bktops.api.TopAPI;
 import com.blakube.bktops.api.TopAPIProvider;
+import com.blakube.bktops.api.config.ConfigType;
 import com.blakube.bktops.api.top.Top;
 import com.blakube.bktops.api.top.TopEntry;
 import com.blakube.bktops.plugin.condition.ConditionEvaluator;
 import com.blakube.bktops.plugin.BKTops;
-import com.blakube.bktops.plugin.formatter.NumberFormatterProvider;
+import com.blakube.bktops.plugin.formatter.TopValueFormatterProvider;
+import com.blakube.bktops.plugin.notification.EventContext;
+import com.blakube.bktops.plugin.notification.NotificationService;
+import com.blakube.bktops.plugin.reward.item.RTagItemSerializer;
 import com.blakube.bktops.plugin.service.notify.NotifyService;
+import com.blakube.bktops.plugin.storage.config.ConfigContainerImpl;
+import com.blakube.bktops.plugin.storage.config.Configuration;
 import com.blakube.bktops.plugin.storage.database.connection.DatabaseExecutors;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Named;
 import revxrsal.commands.annotation.Subcommand;
@@ -33,11 +43,18 @@ public class BKTopsCommand {
     private static final MiniMessage MM = MiniMessage.miniMessage();
 
     private final NotifyService notifyService;
+    private final NotificationService notificationService;
     private final BKTops plugin;
+    private final RTagItemSerializer rewardItemSerializer;
 
-    public BKTopsCommand(NotifyService notifyService, BKTops plugin) {
+    public BKTopsCommand(NotifyService notifyService,
+                         NotificationService notificationService,
+                         BKTops plugin,
+                         RTagItemSerializer rewardItemSerializer) {
         this.notifyService = notifyService;
+        this.notificationService = notificationService;
         this.plugin = plugin;
+        this.rewardItemSerializer = rewardItemSerializer;
     }
 
     @Subcommand("reset <topId>")
@@ -46,7 +63,7 @@ public class BKTopsCommand {
         var top = api.getTop(topId);
 
         if (top == null) {
-            notifyService.sendChat(actor.sender(), "messages. top-not-found");
+            notifyService.sendChat(actor.sender(), "message.top-not-found");
             return;
         }
 
@@ -58,6 +75,119 @@ public class BKTopsCommand {
     public void reload(BukkitCommandActor actor) {
         plugin.reloadPlugin();
         notifyService.sendChat(actor.sender(), "message.config-reloaded");
+    }
+
+    @Subcommand("notify test update")
+    public void notifyTestUpdate(BukkitCommandActor actor) {
+        CommandSender sender = actor.sender();
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(MM.deserialize("<red>This test must be run by a player."));
+            return;
+        }
+        notificationService.notifyTopPositionUpdate(EventContext.positionUpdate(
+                player.getName(), "1", "3", "Example_top", "Example_top", "5000", "3200"));
+        sender.sendMessage(MM.deserialize("<yellow>Fired: top-position-update"));
+    }
+
+    @Subcommand("notify test reset")
+    public void notifyTestReset(BukkitCommandActor actor) {
+        notificationService.notifyTimedTopReset(EventContext.timedReset("Example_top", "Example_top"));
+        actor.sender().sendMessage(MM.deserialize("<yellow>Fired: timed-top-reset"));
+    }
+
+    @Subcommand("rewards additem <topId> <position> <amount>")
+    public void addRewardItem(BukkitCommandActor actor,
+                              @Named("topId") String topId,
+                              @Named("position") String position,
+                              @Named("amount") int amount) {
+        CommandSender sender = actor.sender();
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(MM.deserialize("<red>This command must be run by a player."));
+            return;
+        }
+        if (amount <= 0) {
+            sender.sendMessage(MM.deserialize("<red>Amount must be positive."));
+            return;
+        }
+
+        ItemStack hand = player.getInventory().getItemInMainHand();
+        if (hand.getType() == Material.AIR) {
+            sender.sendMessage(MM.deserialize("<red>Hold the reward item in your main hand."));
+            return;
+        }
+
+        Configuration config = getTopsConfiguration(sender);
+        if (config == null || !config.contains(topId)) return;
+
+        ItemStack rewardItem = hand.clone();
+        rewardItem.setAmount(amount);
+
+        String basePath = topId + ".rewards.positions." + position + ".items";
+        ConfigurationSection items = config.getConfigurationSection(basePath);
+        if (items == null) {
+            items = config.createSection(basePath);
+        }
+
+        int nextId = nextNumericKey(items);
+        config.set(topId + ".rewards.enabled", true);
+        config.set(basePath + "." + nextId + ".item", rewardItemSerializer.serialize(rewardItem));
+        config.set(basePath + "." + nextId + ".amount", amount);
+        plugin.getConfigService().save(ConfigType.TOPS);
+
+        sender.sendMessage(MM.deserialize("<green>Reward item added to <yellow>" + topId
+                + "</yellow> position <yellow>" + position + "</yellow>. Reloading BK-Tops is required."));
+    }
+
+    @Subcommand("rewards addcommand <topId> <position> <command>")
+    public void addRewardCommand(BukkitCommandActor actor,
+                                 @Named("topId") String topId,
+                                 @Named("position") String position,
+                                 @Named("command") String command) {
+        CommandSender sender = actor.sender();
+        if (command == null || command.isBlank()) {
+            sender.sendMessage(MM.deserialize("<red>Command cannot be empty."));
+            return;
+        }
+
+        Configuration config = getTopsConfiguration(sender);
+        if (config == null || !config.contains(topId)) return;
+
+        String path = topId + ".rewards.positions." + position + ".commands";
+        List<String> commands = new ArrayList<>(config.getStringList(path));
+        commands.add(command.startsWith("/") ? command.substring(1) : command);
+
+        config.set(topId + ".rewards.enabled", true);
+        config.set(path, commands);
+        plugin.getConfigService().save(ConfigType.TOPS);
+
+        sender.sendMessage(MM.deserialize("<green>Reward command added to <yellow>" + topId
+                + "</yellow> position <yellow>" + position + "</yellow>. Reloading BK-Tops is required."));
+    }
+
+    @Subcommand("rewards list <topId>")
+    public void listRewards(BukkitCommandActor actor, @Named("topId") String topId) {
+        CommandSender sender = actor.sender();
+        Configuration config = getTopsConfiguration(sender);
+        if (config == null || !config.contains(topId)) return;
+
+        ConfigurationSection positions = config.getConfigurationSection(topId + ".rewards.positions");
+        if (positions == null || positions.getKeys(false).isEmpty()) {
+            sender.sendMessage(MM.deserialize("<yellow>No rewards configured for " + topId + "."));
+            return;
+        }
+
+        sender.sendMessage(MM.deserialize("<gold><bold>BK-Tops Rewards</bold></gold> <gray>|</gray> <white>" + topId));
+        for (String position : positions.getKeys(false)) {
+            ConfigurationSection section = positions.getConfigurationSection(position);
+            if (section == null) continue;
+            int itemCount = section.getConfigurationSection("items") != null
+                    ? section.getConfigurationSection("items").getKeys(false).size()
+                    : 0;
+            int commandCount = section.getStringList("commands").size();
+            String mode = section.getString("team-reward-mode", "default");
+            sender.sendMessage(MM.deserialize("<gray>  " + position + ": <yellow>" + itemCount
+                    + "</yellow> item(s), <yellow>" + commandCount + "</yellow> command(s), mode <white>" + mode));
+        }
     }
 
     @Subcommand("debug <player>")
@@ -169,8 +299,8 @@ public class BKTopsCommand {
                 Optional<TopEntry<UUID>> entry1 = pos1 != -1 ? top.getEntry(pos1) : Optional.empty();
                 Optional<TopEntry<UUID>> entry2 = pos2 != -1 ? top.getEntry(pos2) : Optional.empty();
 
-                rows.add(new Row(topLabel, formatEntry(pos1, entry1), formatEntry(pos2, entry2),
-                        formatDiff(entry1, entry2)));
+                rows.add(new Row(topLabel, formatEntry(top, pos1, entry1), formatEntry(top, pos2, entry2),
+                        formatDiff(top, entry1, entry2)));
             }
 
             
@@ -188,28 +318,48 @@ public class BKTopsCommand {
         });
     }
 
-    private String formatEntry(int position, Optional<TopEntry<UUID>> entry) {
+    private String formatEntry(Top<UUID> top, int position, Optional<TopEntry<UUID>> entry) {
         if (position == -1 || entry.isEmpty()) return "<red>N/A</red>";
 
-        String value = NumberFormatterProvider.isAvailable()
-                ? NumberFormatterProvider.getInstance().format(entry.get().getValue())
-                : String.valueOf(entry.get().getValue());
-
+        String value = formatValue(top, entry.get().getValue());
         return "<yellow>#" + position + "</yellow> <white>(" + value + ")</white>";
     }
 
-    private String formatDiff(Optional<TopEntry<UUID>> entry1, Optional<TopEntry<UUID>> entry2) {
+    private String formatDiff(Top<UUID> top, Optional<TopEntry<UUID>> entry1, Optional<TopEntry<UUID>> entry2) {
         if (entry1.isEmpty() || entry2.isEmpty()) return "";
 
         double diff = entry1.get().getValue() - entry2.get().getValue();
         if (diff == 0) return " <gray>[=]";
 
-        String formatted = NumberFormatterProvider.isAvailable()
-                ? NumberFormatterProvider.getInstance().format(Math.abs(diff))
-                : String.valueOf(Math.abs(diff));
-
+        String formatted = formatValue(top, Math.abs(diff));
         return diff > 0
                 ? " <green>[+" + formatted + "]</green>"
                 : " <red>[-" + formatted + "]</red>";
+    }
+
+    private String formatValue(Top<UUID> top, double value) {
+        return TopValueFormatterProvider.isAvailable()
+                ? TopValueFormatterProvider.getInstance().resolve(top).format(value)
+                : String.valueOf(value);
+    }
+
+    private Configuration getTopsConfiguration(CommandSender sender) {
+        var container = plugin.getConfigService().provide(ConfigType.TOPS);
+        if (!(container instanceof ConfigContainerImpl impl)) {
+            sender.sendMessage(MM.deserialize("<red>Internal tops config type is not supported."));
+            return null;
+        }
+        return impl.getInternalConfiguration();
+    }
+
+    private int nextNumericKey(ConfigurationSection section) {
+        int max = -1;
+        for (String key : section.getKeys(false)) {
+            try {
+                max = Math.max(max, Integer.parseInt(key));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return max + 1;
     }
 }

@@ -1,6 +1,7 @@
 package com.blakube.bktops.plugin.provider;
 
 import com.blakube.bktops.api.provider.ValueProvider;
+import com.blakube.bktops.plugin.debug.Debug;
 import me.clip.placeholderapi.PlaceholderAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -14,12 +15,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class PlaceholderValueProvider implements ValueProvider<UUID> {
+public final class PlaceholderValueProvider implements ValueProvider<UUID>, DetectableValueKind {
 
     private final Plugin plugin;
     private final String placeholder;
     private final Plugin papiPlugin;
     private final boolean hasRecursion;
+
+    
+    private final ValueKind parseHint;
+
+    private volatile ValueKind detectedKind = ValueKind.UNKNOWN;
 
     
     
@@ -32,8 +38,13 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
     private final java.util.concurrent.atomic.AtomicBoolean recursionWarned = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public PlaceholderValueProvider(@NotNull Plugin plugin, @NotNull String placeholder) {
+        this(plugin, placeholder, ValueKind.UNKNOWN);
+    }
+
+    public PlaceholderValueProvider(@NotNull Plugin plugin, @NotNull String placeholder, @NotNull ValueKind parseHint) {
         this.plugin      = Objects.requireNonNull(plugin,      "plugin");
         this.placeholder = Objects.requireNonNull(placeholder, "placeholder");
+        this.parseHint   = Objects.requireNonNull(parseHint,   "parseHint");
 
         this.papiPlugin = Bukkit.getPluginManager().getPlugin("PlaceholderAPI");
 
@@ -63,60 +74,171 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
         OfflinePlayer offline = Bukkit.getOfflinePlayer(identifier);
         try {
             String str = PlaceholderAPI.setPlaceholders(offline, placeholder);
-            if (str == null) return null;
-            str = str.trim();
-            if (str.isEmpty()) return null;
-
-            Double parsed = parseNumeric(str);
-            if (parsed != null) {
-                if (cache.size() >= MAX_CACHE_SIZE) evictExpired(now);
-                cache.put(identifier, new CacheEntry(parsed, now));
+            if (str == null) {
+                Debug.log(() -> "PAPI returned null for " + placeholder + " (player " + identifier + ")");
+                return null;
             }
-            return parsed;
+            str = str.trim();
+            if (str.isEmpty()) {
+                Debug.log(() -> "PAPI returned empty for " + placeholder + " (player " + identifier + ")");
+                return null;
+            }
+
+            final String raw = str;
+            ParsedValue parsed = parse(str, parseHint);
+            if (parsed != null) {
+                updateDetectedKind(parsed.kind);
+                if (cache.size() >= MAX_CACHE_SIZE) evictExpired(now);
+                cache.put(identifier, new CacheEntry(parsed.value, now));
+                Debug.log(() -> "Parsed " + placeholder + " = \"" + raw + "\" -> " + parsed.value
+                        + " (" + parsed.kind + ", hint=" + parseHint + ") for " + identifier);
+                return parsed.value;
+            }
+            Debug.log(() -> "Could not parse " + placeholder + " = \"" + raw + "\" (hint=" + parseHint
+                    + ") for " + identifier);
+            return null;
         } catch (NumberFormatException e) {
+            Debug.log(() -> "NumberFormatException parsing " + placeholder + " for " + identifier);
             return null;
         }
+    }
+
+    
+
+
+
+
+    private void updateDetectedKind(@NotNull ValueKind kind) {
+        if (kind == ValueKind.TIME) {
+            detectedKind = ValueKind.TIME;
+        } else if (detectedKind != ValueKind.TIME) {
+            detectedKind = ValueKind.NUMBER;
+        }
+    }
+
+    @Override
+    public @NotNull ValueKind getDetectedValueKind() {
+        return detectedKind;
     }
 
     private void evictExpired(long now) {
         cache.entrySet().removeIf(e -> (now - e.getValue().time) > DEFAULT_TTL_MILLIS);
     }
 
-    private static final Pattern TIME_UNIT_TRIGGER = Pattern.compile("\\d+\\s*[dDhH]");
-    private static final Pattern TIME_UNIT_FULL    = Pattern.compile(
-            "^\\s*(?:(\\d+)\\s*[dD]\\s*)?(?:(\\d+)\\s*[hH]\\s*)?(?:(\\d+)\\s*[mM]\\s*)?(?:(\\d+)\\s*[sS])?\\s*$"
-    );
+    private static final Pattern COLON_TIME = Pattern.compile("^\\d{1,3}:[0-5]?\\d(?::[0-5]?\\d)?$");
 
-    private static Double parseNumeric(String s) {
-        if (s.contains(":")) {
-            String[] parts = s.split(":");
-            try {
-                long seconds = 0;
-                if (parts.length == 2) {
-                    seconds = Long.parseLong(parts[0].replaceAll("[^0-9]", "")) * 60
-                            + Long.parseLong(parts[1].replaceAll("[^0-9]", ""));
-                } else if (parts.length == 3) {
-                    seconds = Long.parseLong(parts[0].replaceAll("[^0-9]", "")) * 3600
-                            + Long.parseLong(parts[1].replaceAll("[^0-9]", "")) * 60
-                            + Long.parseLong(parts[2].replaceAll("[^0-9]", ""));
-                }
-                return (double) seconds;
-            } catch (NumberFormatException ignored) {
+    
+    
+    
+    private static final Pattern DURATION_TOKEN = Pattern.compile(
+            "(\\d+)\\s*(mo|[ywdhms])", Pattern.CASE_INSENSITIVE);
+
+    
+    
+    private static long secondsForUnit(@NotNull String lowerUnit) {
+        return switch (lowerUnit) {
+            case "y"  -> 31_536_000L;
+            case "mo" -> 2_592_000L;
+            case "w"  -> 604_800L;
+            case "d"  -> 86_400L;
+            case "h"  -> 3_600L;
+            case "m"  -> 60L;
+            default   -> 1L; 
+        };
+    }
+
+    
+    private static ParsedValue parse(String s) {
+        return parse(s, ValueKind.UNKNOWN);
+    }
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    private static ParsedValue parse(String s, @NotNull ValueKind hint) {
+        if (hint != ValueKind.NUMBER) {
+            Double colonSeconds = parseColon(s);
+            if (colonSeconds != null) return new ParsedValue(colonSeconds, ValueKind.TIME);
+
+            Long durationSeconds = parseDuration(s, hint);
+            if (durationSeconds != null) return new ParsedValue(durationSeconds, ValueKind.TIME);
+
+            if (hint == ValueKind.TIME) {
+                
+                ParsedValue number = parseNumber(s, false);
+                return number == null ? null : new ParsedValue(number.value, ValueKind.TIME);
             }
         }
 
-        if (TIME_UNIT_TRIGGER.matcher(s).find()) {
-            Matcher m = TIME_UNIT_FULL.matcher(s);
-            if (m.matches()) {
-                long seconds = 0;
-                if (m.group(1) != null) seconds += Long.parseLong(m.group(1)) * 86_400;
-                if (m.group(2) != null) seconds += Long.parseLong(m.group(2)) * 3_600;
-                if (m.group(3) != null) seconds += Long.parseLong(m.group(3)) * 60;
-                if (m.group(4) != null) seconds += Long.parseLong(m.group(4));
-                return (double) seconds;
-            }
+        return parseNumber(s, hint == ValueKind.NUMBER);
+    }
+
+    
+
+
+
+
+
+
+
+
+
+    @Nullable
+    private static Long parseDuration(@NotNull String s, @NotNull ValueKind hint) {
+        String trimmed = s.trim();
+        if (trimmed.isEmpty()) return null;
+
+        Matcher m = DURATION_TOKEN.matcher(trimmed);
+        long totalSeconds = 0;
+        int tokenCount = 0;
+        int cursor = 0;
+        String lastUnitRaw = null;
+
+        while (m.find()) {
+            if (!isSeparator(trimmed, cursor, m.start())) return null; 
+            cursor = m.end();
+            lastUnitRaw = m.group(2);
+            totalSeconds += Long.parseLong(m.group(1)) * secondsForUnit(lastUnitRaw.toLowerCase());
+            tokenCount++;
         }
 
+        if (tokenCount == 0) return null;
+        if (!isSeparator(trimmed, cursor, trimmed.length())) return null; 
+
+        
+        if (tokenCount == 1 && hint != ValueKind.TIME && "M".equals(lastUnitRaw)) return null;
+
+        return totalSeconds;
+    }
+
+    
+    private static boolean isSeparator(@NotNull String s, int from, int to) {
+        for (int i = from; i < to; i++) {
+            char c = s.charAt(i);
+            if (c != ',' && !Character.isWhitespace(c)) return false;
+        }
+        return true;
+    }
+
+    
+
+
+
+
+    @Nullable
+    private static ParsedValue parseNumber(String s, boolean allowLowerMinuteSuffix) {
         s = s.replace(",", "").replace("_", "").trim();
 
         boolean percent = s.endsWith("%");
@@ -124,17 +246,16 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
 
         double multiplier = 1.0;
         if (!s.isEmpty()) {
-            char last = Character.toLowerCase(s.charAt(s.length() - 1));
-            if (last == 'k' || last == 'm' || last == 'b' || last == 't') {
-                multiplier = switch (last) {
-                    case 'k' -> 1_000d;
-                    case 'm' -> 1_000_000d;
-                    case 'b' -> 1_000_000_000d;
-                    case 't' -> 1_000_000_000_000d;
-                    default  -> 1.0;
-                };
-                s = s.substring(0, s.length() - 1).trim();
-            }
+            char last = s.charAt(s.length() - 1);
+            multiplier = switch (last) {
+                case 'k', 'K' -> 1_000d;
+                case 'M'      -> 1_000_000d;
+                case 'm'      -> allowLowerMinuteSuffix ? 1_000_000d : 1.0;
+                case 'b', 'B' -> 1_000_000_000d;
+                case 't', 'T' -> 1_000_000_000_000d;
+                default       -> 1.0;
+            };
+            if (multiplier != 1.0) s = s.substring(0, s.length() - 1).trim();
         }
 
         s = s.replaceAll("[^0-9eE+\\-\\.]", "");
@@ -145,8 +266,27 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID> {
         double val  = base * multiplier;
         if (percent) val /= 100.0;
         if (Double.isInfinite(val) || Double.isNaN(val)) return null;
-        return val;
+        return new ParsedValue(val, ValueKind.NUMBER);
     }
+
+    @Nullable
+    private static Double parseColon(String s) {
+        String trimmed = s.trim();
+        if (!COLON_TIME.matcher(trimmed).matches()) return null;
+        String[] parts = trimmed.split(":");
+        try {
+            if (parts.length == 2) {
+                return (double) (Long.parseLong(parts[0]) * 60 + Long.parseLong(parts[1]));
+            }
+            return (double) (Long.parseLong(parts[0]) * 3600
+                    + Long.parseLong(parts[1]) * 60
+                    + Long.parseLong(parts[2]));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private record ParsedValue(double value, ValueKind kind) {}
 
     private static final class CacheEntry {
         final double value;

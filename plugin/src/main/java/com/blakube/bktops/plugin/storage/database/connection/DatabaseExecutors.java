@@ -22,7 +22,9 @@ public final class DatabaseExecutors {
     public static volatile ExecutorService DB_EXECUTOR = Executors.newFixedThreadPool(1, DB_THREAD_FACTORY);
 
     public static void init(int threads) {
+        ExecutorService previous = DB_EXECUTOR;
         DB_EXECUTOR = Executors.newFixedThreadPool(Math.max(1, threads), DB_THREAD_FACTORY);
+        previous.shutdown();
     }
 
     public static void awaitPendingTasks() {

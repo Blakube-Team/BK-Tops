@@ -1,18 +1,49 @@
+############################################
+# BK-Tops · Database
+#
+# Database connection settings used by the storage layer. H2 works out of the
+# box for local testing; MySQL/MariaDB require host, credentials, and a live
+# database endpoint.
+#
+# Notes:
+#  - `driver` selects the JDBC backend.
+#  - `pool` controls the HikariCP connection pool.
+############################################
 
+# JDBC driver name.
 driver: h2
+
+# Database host.
 host: localhost
+
+# Database port.
 port: 3006
+
+# Database or schema name.
 db-name: bktops
+
+# Username used to open the database connection.
 username: tops_user
+
+# Password used to open the database connection.
 password: SECRET_PASSWORD
 
+# HikariCP pool tuning.
 pool:
+  # Number of worker threads reserved for database tasks.
   threads: 1
+  # Maximum number of pooled connections.
   max-pool-size: 1
+  # Minimum number of idle connections kept ready.
   minimum-idle: 1
+  # Max time to wait for a connection from the pool.
   connection-timeout: 30000
+  # Time before an idle connection can be retired.
   idle-timeout: 600000
+  # Maximum lifetime for a pooled connection.
   max-lifetime: 1800000
+  # Leak detector threshold in milliseconds.
   leak-detection-threshold: 30000
 
+# DO NOT TOUCH THIS!
 config-version: 1

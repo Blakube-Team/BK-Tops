@@ -3,9 +3,12 @@ package com.blakube.bktops.api.event.dispatcher;
 import com.blakube.bktops.api.event.top.TimedTopResetEvent;
 import com.blakube.bktops.api.event.top.TopPositionUpdateEvent;
 import com.blakube.bktops.api.timed.ResetSchedule;
+import com.blakube.bktops.api.top.TopEntry;
 import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 public final class TopEventDispatcher {
 
@@ -32,10 +35,11 @@ public final class TopEventDispatcher {
                                       @NotNull ResetSchedule.Type scheduleType,
                                       long previousStartTime,
                                       long newStartTime,
-                                      long nextResetTime) {
+                                      long nextResetTime,
+                                      @NotNull List<? extends TopEntry<?>> previousEntries) {
         boolean async = !Bukkit.isPrimaryThread();
         TimedTopResetEvent event = new TimedTopResetEvent(
-                async, topId, scheduleType, previousStartTime, newStartTime, nextResetTime
+                async, topId, scheduleType, previousStartTime, newStartTime, nextResetTime, previousEntries
         );
         Bukkit.getPluginManager().callEvent(event);
     }

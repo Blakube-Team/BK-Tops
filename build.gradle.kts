@@ -2,7 +2,7 @@ plugins { java }
 
 subprojects {
     group = "com.blakube"
-    version = "1.6.1-SNAPSHOT"
+    version = "1.8.0-SNAPSHOT"
 
     apply(plugin = "java-library")
 

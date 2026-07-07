@@ -10,6 +10,8 @@ import com.blakube.bktops.plugin.command.BKTopsCommand;
 import com.blakube.bktops.plugin.command.exception.ExceptionHandler;
 import com.blakube.bktops.plugin.formatter.NumberFormatter;
 import com.blakube.bktops.plugin.formatter.NumberFormatterProvider;
+import com.blakube.bktops.plugin.formatter.TopValueFormatter;
+import com.blakube.bktops.plugin.formatter.TopValueFormatterProvider;
 import com.blakube.bktops.plugin.hook.metrics.Metrics;
 import com.blakube.bktops.plugin.hook.placeholder.PlaceholderAPIHook;
 import com.blakube.bktops.plugin.listener.PlayerJoinListener;
@@ -17,6 +19,15 @@ import com.blakube.bktops.plugin.listener.PlayerQuitListener;
 import com.blakube.bktops.plugin.loader.TopLoader;
 import com.blakube.bktops.plugin.message.MessageParser;
 import com.blakube.bktops.plugin.message.MessageRepository;
+import com.blakube.bktops.plugin.notification.DiscordWebhookSender;
+import com.blakube.bktops.plugin.notification.NotificationService;
+import com.blakube.bktops.plugin.notification.TopNotificationListener;
+import com.blakube.bktops.plugin.reward.PendingRewardService;
+import com.blakube.bktops.plugin.reward.config.RewardConfigLoader;
+import com.blakube.bktops.plugin.reward.config.RewardConfigRegistry;
+import com.blakube.bktops.plugin.reward.item.RTagItemSerializer;
+import com.blakube.bktops.plugin.reward.listener.TopRewardListener;
+import com.blakube.bktops.plugin.reward.storage.PendingRewardDAO;
 import com.blakube.bktops.plugin.serializer.UUIDSerializer;
 import com.blakube.bktops.plugin.service.config.ConfigService;
 import com.blakube.bktops.plugin.service.notify.NotifyService;
@@ -42,8 +53,13 @@ public class BKTops extends JavaPlugin {
     private MessageRepository messageRepository;
     private PlaceholderAPIHook placeholderAPIHook;
     private NotifyService  notifyService;
+    private DiscordWebhookSender discordWebhookSender;
+    private NotificationService notificationService;
     private TopAPI api;
     private TeamHandler teamManager;
+    private RewardConfigRegistry rewardConfigRegistry;
+    private PendingRewardService pendingRewardService;
+    private RTagItemSerializer rewardItemSerializer;
 
     @Override
     public void onEnable() {
@@ -51,13 +67,16 @@ public class BKTops extends JavaPlugin {
         this.teamManager = new TeamHandler();
 
         setUpConfig();
+        initDebug();
         setUpStorage();
         initNumberFormatter();
         initHooks();
-        initTops();
         initServices();
+        initNotifications();
         initApi();
+        initRewards();
         registerListeners();
+        initTops();
         registerCommands();
         initScheduler();
 
@@ -82,12 +101,21 @@ public class BKTops extends JavaPlugin {
         DatabaseConnection.close();
 
         NumberFormatterProvider.unload();
+        TopValueFormatterProvider.unload();
 
         getLogger().info("BK-Tops disabled.");
     }
 
     private void setUpConfig() {
         configService = new ConfigService(this);
+    }
+
+    private void initDebug() {
+        boolean debugEnabled = configService.provide(ConfigType.CONFIG).getBoolean("debug", false);
+        com.blakube.bktops.plugin.debug.Debug.init(getLogger(), debugEnabled);
+        if (debugEnabled) {
+            getLogger().info("Debug logging is ENABLED (config.yml -> debug: true).");
+        }
     }
 
     private void setUpStorage() {
@@ -97,6 +125,7 @@ public class BKTops extends JavaPlugin {
     private void initNumberFormatter() {
         NumberFormatter formatter = new NumberFormatter(configService.provide(ConfigType.CONFIG));
         NumberFormatterProvider.setInstance(formatter);
+        TopValueFormatterProvider.setInstance(new TopValueFormatter(configService.provide(ConfigType.CONFIG)));
         getLogger().info("NumberFormatter initialized with mode: " + configService.provide(ConfigType.CONFIG).getString("number-format.mode", "EXACT"));
     }
 
@@ -106,8 +135,39 @@ public class BKTops extends JavaPlugin {
     }
 
     private void registerListeners() {
-        Bukkit.getPluginManager().registerEvents(new PlayerJoinListener(registry), this);
+        Bukkit.getPluginManager().registerEvents(new PlayerJoinListener(registry, pendingRewardService), this);
         Bukkit.getPluginManager().registerEvents(new PlayerQuitListener(registry), this);
+        Bukkit.getPluginManager().registerEvents(new TopNotificationListener(notificationService), this);
+        Bukkit.getPluginManager().registerEvents(new TopRewardListener(rewardConfigRegistry, pendingRewardService, teamManager), this);
+    }
+
+    private void initNotifications() {
+        this.discordWebhookSender = new DiscordWebhookSender(this, configService.provide(ConfigType.DISCORD));
+        this.notificationService  = new NotificationService(configService.provide(ConfigType.NOTIFICATIONS), discordWebhookSender);
+    }
+
+    private void initRewards() {
+        if (rewardConfigRegistry == null) {
+            rewardConfigRegistry = new RewardConfigRegistry();
+        }
+
+        new RewardConfigLoader(configService.provide(ConfigType.TOPS), getLogger()).loadInto(rewardConfigRegistry);
+
+        if (rewardItemSerializer == null) {
+            rewardItemSerializer = new RTagItemSerializer();
+        }
+
+        if (pendingRewardService == null) {
+            pendingRewardService = new PendingRewardService(
+                    this,
+                    new PendingRewardDAO(),
+                    rewardItemSerializer,
+                    registry,
+                    notificationService
+            );
+        }
+
+        pendingRewardService.loadPendingFromStorage();
     }
 
     private void initHooks() {
@@ -162,7 +222,7 @@ public class BKTops extends JavaPlugin {
                 .build();
 
         lamp.register(
-                new BKTopsCommand(notifyService, this));
+                new BKTopsCommand(notifyService, notificationService, this, rewardItemSerializer));
     }
 
     private void initTops() {
@@ -179,19 +239,32 @@ public class BKTops extends JavaPlugin {
         }
 
         configService.reloadAll();
+        initDebug();
 
         if (NumberFormatterProvider.isAvailable()) {
             NumberFormatterProvider.getInstance().reload();
+        }
+
+        if (TopValueFormatterProvider.isAvailable()) {
+            TopValueFormatterProvider.getInstance().reload();
         }
 
         if (placeholderAPIHook != null) {
             placeholderAPIHook.reload();
         }
 
+        if (notificationService != null) {
+            notificationService.reload(configService.provide(ConfigType.NOTIFICATIONS));
+        }
+        if (discordWebhookSender != null) {
+            discordWebhookSender.reload(configService.provide(ConfigType.DISCORD));
+        }
+
         DatabaseExecutors.awaitPendingTasks();
         DatabaseConnection.close();
         setUpStorage();
 
+        initRewards();
         reloadTeamHooks();
         initTops();
         initScheduler();
@@ -217,6 +290,10 @@ public class BKTops extends JavaPlugin {
 
     public TeamHandler getTeamManager() {
         return teamManager;
+    }
+
+    public ConfigService getConfigService() {
+        return configService;
     }
 
 }

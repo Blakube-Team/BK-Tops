@@ -141,13 +141,17 @@ public final class CronExpression {
                 int b = Integer.parseInt(ab[1]);
                 if (a > b) throw new IllegalArgumentException("range a-b must have a<=b");
                 for (int i = a; i <= b; i++) values.add(i);
+            } else if (part.contains("/")) {
+                
+                int a = Integer.parseInt(base);
+                for (int i = a; i <= f.max; i++) values.add(i);
             } else {
                 values.add(Integer.parseInt(base));
             }
 
+            int start = values.isEmpty() ? f.min : values.get(0);
             for (int v : values) {
                 if (v < f.min || v > f.max) continue;
-                int start = values.isEmpty() ? f.min : values.get(0);
                 if (((v - start) % step) == 0) {
                     f.allowed.add(v);
                 }

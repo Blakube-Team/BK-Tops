@@ -323,8 +323,11 @@ public final class TopStorageDAO<K> {
     }
 
     public int getPosition(@NotNull K identifier) {
+        
+        
         String sql = String.format(
-                "SELECT COUNT(*) + 1 as position FROM %s WHERE top_value > (SELECT top_value FROM %s WHERE identifier = ?)",
+                "SELECT (SELECT COUNT(*) + 1 FROM %s WHERE top_value > t.top_value) as position " +
+                "FROM %s t WHERE identifier = ?",
                 tableName, tableName
         );
 

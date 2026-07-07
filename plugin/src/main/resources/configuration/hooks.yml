@@ -1,38 +1,54 @@
+############################################
+# BK-Tops · Team hooks
+#
+# Integration switches for supported team/clan/faction plugins. The highest
+# priority enabled hook wins when multiple compatible plugins are present.
+############################################
 
 lands:
+  # Lands integration.
   enabled: true
   priority: 9
 
 superior-skyblock-2:
+  # SuperiorSkyblock 2 integration.
   enabled: true
   priority: 8
 
 bento-box:
+  # BentoBox integration.
   enabled: true
   priority: 7
 
 ultimate-clans:
+  # UltimateClans integration.
   enabled: true
   priority: 6
 
 kingdoms-x:
+  # KingdomsX integration.
   enabled: true
   priority: 5
 
 towny:
+  # Towny integration.
   enabled: true
   priority: 4
 
 factions-uuid:
+  # FactionsUUID integration.
   enabled: true
   priority: 3
 
 better-teams:
+  # BetterTeams integration.
   enabled: true
   priority: 2
 
 simple-clans:
+  # SimpleClans integration.
   enabled: true
   priority: 1
 
+# DO NOT TOUCH THIS!
 config-version: 1

@@ -16,6 +16,7 @@ import com.blakube.bktops.plugin.loader.builder.TopConfigBuilder;
 import com.blakube.bktops.plugin.provider.PlaceholderValueProvider;
 import com.blakube.bktops.plugin.provider.TeamValueProvider;
 import com.blakube.bktops.plugin.provider.TimedValueProvider;
+import com.blakube.bktops.plugin.provider.ValueKind;
 import com.blakube.bktops.plugin.resolver.PlayerNameResolver;
 import com.blakube.bktops.plugin.resolver.TeamNameResolver;
 import com.blakube.bktops.plugin.serializer.UUIDSerializer;
@@ -107,17 +108,21 @@ public final class TopLoader implements Loader<TopRegistry<UUID>> {
         ValueProvider<UUID> baseProvider;
         NameResolver<UUID> nameResolver;
 
+        
+        
+        ValueKind parseHint = ValueKind.fromValueFormat(topConfig.getValueFormat());
+
         boolean isTeam = type.equalsIgnoreCase("team") || type.equalsIgnoreCase("team-timed");
         if (isTeam) {
             BKTops bkTops = (plugin instanceof BKTops) ? (BKTops) plugin : null;
             if (bkTops == null) {
                 throw new ConfigException("Team tops require BK-Tops plugin context");
             }
-            TeamScoreService tss = new TeamScoreService(bkTops, bkTops.getTeamManager());
+            TeamScoreService tss = new TeamScoreService(bkTops, bkTops.getTeamManager(), parseHint);
             baseProvider = new TeamValueProvider(plugin, tss, providerPlaceholder);
             nameResolver = new TeamNameResolver(bkTops.getTeamManager(), new PlayerNameResolver());
         } else {
-            baseProvider = new PlaceholderValueProvider(plugin, providerPlaceholder);
+            baseProvider = new PlaceholderValueProvider(plugin, providerPlaceholder, parseHint);
             nameResolver = new PlayerNameResolver();
         }
 

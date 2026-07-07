@@ -6,6 +6,8 @@ public enum ConfigType {
     CONFIG("configuration/config.yml", "config.yml", "configuration", true),
     HOOKS("configuration/hooks.yml", "hooks.yml", "configuration", true),
     TOPS("configuration/tops.yml", "tops.yml", "configuration", false),
+    NOTIFICATIONS("configuration/notifications.yml", "notifications.yml", "configuration", true),
+    DISCORD("configuration/discord.yml", "discord.yml", "configuration", true),
     LANG("lang/lang.yml", "lang.yml", "lang", true);
 
     private final String defaultPath;
