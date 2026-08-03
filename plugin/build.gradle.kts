@@ -79,8 +79,8 @@ dependencies {
     testImplementation("org.mockito:mockito-core:5.11.0")
     implementation(project(":api"))
 
-    implementation("io.github.revxrsal:lamp.common:4.0.0-rc.12")
-    implementation("io.github.revxrsal:lamp.bukkit:4.0.0-rc.12")
+    implementation("io.github.revxrsal:lamp.common:4.0.0-rc.18")
+    implementation("io.github.revxrsal:lamp.bukkit:4.0.0-rc.18")
 
     implementation("dev.dejvokep:boosted-yaml:1.3.6")
     implementation("com.h2database:h2:2.1.214")
