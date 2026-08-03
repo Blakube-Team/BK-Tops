@@ -50,7 +50,8 @@ class H2SqlTest {
 
     private String trimSql() {
         return "DELETE FROM " + TABLE + " WHERE identifier NOT IN " +
-               "(SELECT identifier FROM (SELECT identifier FROM " + TABLE + " ORDER BY top_value DESC LIMIT ?) AS keep_list)";
+               "(SELECT identifier FROM (SELECT identifier FROM " + TABLE + " " +
+               "ORDER BY top_value DESC, last_updated ASC, identifier ASC LIMIT ?) AS keep_list)";
     }
 
     private void upsert(String id, String name, double value) throws SQLException {
@@ -67,7 +68,8 @@ class H2SqlTest {
         List<String> result = new ArrayList<>();
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(
-                "SELECT identifier FROM " + TABLE + " ORDER BY top_value DESC")) {
+                "SELECT identifier FROM " + TABLE + " " +
+                "ORDER BY top_value DESC, last_updated ASC, identifier ASC")) {
             while (rs.next()) result.add(rs.getString("identifier"));
         }
         return result;
@@ -185,7 +187,10 @@ class H2SqlTest {
     }
 
     private String positionSql() {
-        return "SELECT (SELECT COUNT(*) + 1 FROM " + TABLE + " WHERE top_value > t.top_value) as position " +
+        return "SELECT (SELECT COUNT(*) + 1 FROM " + TABLE + " WHERE " +
+               "top_value > t.top_value OR " +
+               "(top_value = t.top_value AND (last_updated < t.last_updated OR " +
+               "(last_updated = t.last_updated AND identifier < t.identifier)))) as position " +
                "FROM " + TABLE + " t WHERE identifier = ?";
     }
 
@@ -224,5 +229,33 @@ class H2SqlTest {
 
         List<String> ids = loadTopIds();
         assertEquals(List.of("uuid-b", "uuid-a", "uuid-c"), ids);
+    }
+
+    @Test
+    void load_and_position_useDeterministicTieBreakers() throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(upsertSql())) {
+            stmt.setString(1, "uuid-c");
+            stmt.setString(2, "PC");
+            stmt.setDouble(3, 100.0);
+            stmt.setLong(4, 3000L);
+            stmt.executeUpdate();
+
+            stmt.setString(1, "uuid-a");
+            stmt.setString(2, "PA");
+            stmt.setDouble(3, 100.0);
+            stmt.setLong(4, 1000L);
+            stmt.executeUpdate();
+
+            stmt.setString(1, "uuid-b");
+            stmt.setString(2, "PB");
+            stmt.setDouble(3, 100.0);
+            stmt.setLong(4, 1000L);
+            stmt.executeUpdate();
+        }
+
+        assertEquals(List.of("uuid-a", "uuid-b", "uuid-c"), loadTopIds());
+        assertEquals(1, position("uuid-a"));
+        assertEquals(2, position("uuid-b"));
+        assertEquals(3, position("uuid-c"));
     }
 }

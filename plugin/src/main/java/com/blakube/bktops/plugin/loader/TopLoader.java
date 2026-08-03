@@ -16,6 +16,8 @@ import com.blakube.bktops.plugin.loader.builder.TopConfigBuilder;
 import com.blakube.bktops.plugin.provider.PlaceholderValueProvider;
 import com.blakube.bktops.plugin.provider.TeamValueProvider;
 import com.blakube.bktops.plugin.provider.TimedValueProvider;
+import com.blakube.bktops.plugin.debug.Debug;
+import com.blakube.bktops.plugin.provider.TimeUnitScale;
 import com.blakube.bktops.plugin.provider.ValueKind;
 import com.blakube.bktops.plugin.resolver.PlayerNameResolver;
 import com.blakube.bktops.plugin.resolver.TeamNameResolver;
@@ -112,17 +114,25 @@ public final class TopLoader implements Loader<TopRegistry<UUID>> {
         
         ValueKind parseHint = ValueKind.fromValueFormat(topConfig.getValueFormat());
 
+
+
+        TimeUnitScale bareTimeUnit = TimeUnitScale.SECONDS;
+        if (parseHint == ValueKind.TIME) {
+            bareTimeUnit = TimeUnitScale.resolve(topConfig.getTimeUnit(), providerPlaceholder);
+            Debug.log("[{}] Bare numeric TIME values read as {}", topId, bareTimeUnit);
+        }
+
         boolean isTeam = type.equalsIgnoreCase("team") || type.equalsIgnoreCase("team-timed");
         if (isTeam) {
             BKTops bkTops = (plugin instanceof BKTops) ? (BKTops) plugin : null;
             if (bkTops == null) {
                 throw new ConfigException("Team tops require BK-Tops plugin context");
             }
-            TeamScoreService tss = new TeamScoreService(bkTops, bkTops.getTeamManager(), parseHint);
+            TeamScoreService tss = new TeamScoreService(bkTops, bkTops.getTeamManager(), parseHint, bareTimeUnit);
             baseProvider = new TeamValueProvider(plugin, tss, providerPlaceholder);
             nameResolver = new TeamNameResolver(bkTops.getTeamManager(), new PlayerNameResolver());
         } else {
-            baseProvider = new PlaceholderValueProvider(plugin, providerPlaceholder, parseHint);
+            baseProvider = new PlaceholderValueProvider(plugin, providerPlaceholder, parseHint, bareTimeUnit);
             nameResolver = new PlayerNameResolver();
         }
 

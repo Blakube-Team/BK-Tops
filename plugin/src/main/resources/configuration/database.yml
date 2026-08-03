@@ -28,6 +28,14 @@ username: tops_user
 # Password used to open the database connection.
 password: SECRET_PASSWORD
 
+# H2-only settings (ignored when driver is mysql).
+h2:
+  # Allow other processes to open the same H2 file at the same time.
+  # Requires H2 to open a TCP socket and resolve the local hostname, which fails on
+  # some hosts (containers without a resolvable hostname, network filesystems) with
+  # "IO Exception" / error 90028. Leave false unless you really share the database file.
+  auto-server: false
+
 # HikariCP pool tuning.
 pool:
   # Number of worker threads reserved for database tasks.
@@ -46,4 +54,4 @@ pool:
   leak-detection-threshold: 30000
 
 # DO NOT TOUCH THIS!
-config-version: 1
+config-version: 2

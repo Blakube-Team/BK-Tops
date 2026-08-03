@@ -2,6 +2,7 @@ package com.blakube.bktops.plugin.service.team;
 
 import com.blakube.bktops.plugin.hook.team.TeamHandler;
 import com.blakube.bktops.plugin.provider.PlaceholderValueProvider;
+import com.blakube.bktops.plugin.provider.TimeUnitScale;
 import com.blakube.bktops.plugin.provider.ValueKind;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
@@ -15,6 +16,7 @@ public final class TeamScoreService {
     private final Plugin plugin;
     private final TeamHandler teamHandler;
     private final ValueKind parseHint;
+    private final TimeUnitScale bareTimeUnit;
     private final Map<String, PlaceholderValueProvider> providers = new ConcurrentHashMap<>();
     
     private static final long MEMBERS_TTL_MILLIS = TimeUnit.SECONDS.toMillis(3);
@@ -27,9 +29,17 @@ public final class TeamScoreService {
     }
 
     public TeamScoreService(@NotNull Plugin plugin, @NotNull TeamHandler teamHandler, @NotNull ValueKind parseHint) {
+        this(plugin, teamHandler, parseHint, TimeUnitScale.SECONDS);
+    }
+
+    public TeamScoreService(@NotNull Plugin plugin,
+                            @NotNull TeamHandler teamHandler,
+                            @NotNull ValueKind parseHint,
+                            @NotNull TimeUnitScale bareTimeUnit) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.teamHandler = Objects.requireNonNull(teamHandler, "teamHandler");
         this.parseHint = Objects.requireNonNull(parseHint, "parseHint");
+        this.bareTimeUnit = Objects.requireNonNull(bareTimeUnit, "bareTimeUnit");
     }
 
     public Optional<Double> computeTeamScore(@NotNull UUID anyMember, @NotNull String placeholder) {
@@ -48,7 +58,7 @@ public final class TeamScoreService {
             members = validated;
         }
 
-        PlaceholderValueProvider provider = providers.computeIfAbsent(placeholder, ph -> new PlaceholderValueProvider(plugin, ph, parseHint));
+        PlaceholderValueProvider provider = providers.computeIfAbsent(placeholder, ph -> new PlaceholderValueProvider(plugin, ph, parseHint, bareTimeUnit));
 
         boolean anyValue = false;
         double sum = 0.0d;

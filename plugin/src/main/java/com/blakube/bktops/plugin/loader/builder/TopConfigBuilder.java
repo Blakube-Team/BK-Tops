@@ -26,6 +26,7 @@ public final class TopConfigBuilder implements Builder<TopConfig, ConfigurationS
             .displayName(section.getString("display-name", null))
             .conditionSet(parseConditionSet(section))
             .valueFormat(section.getString("value-format", null))
+            .timeUnit(section.getString("time-unit", null))
             .build();
     }
 

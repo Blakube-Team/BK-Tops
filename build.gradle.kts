@@ -2,7 +2,7 @@ plugins { java }
 
 subprojects {
     group = "com.blakube"
-    version = "1.8.0-SNAPSHOT"
+    version = "1.8.1-SNAPSHOT"
 
     apply(plugin = "java-library")
 
@@ -34,5 +34,10 @@ subprojects {
         maven("https://repo.glaremasters.me/repository/towny/")
         maven("https://repo.codemc.org/repository/bentoboxworld")
         maven("https://dependency.download/releases/")
+    }
+
+    tasks.register<Copy>("copyDependencies") {
+        from(configurations.compileClasspath)
+        into(layout.buildDirectory.dir("libs/dependencies"))
     }
 }

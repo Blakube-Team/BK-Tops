@@ -11,6 +11,12 @@
 #  - duration-like strings are treated as time
 #  - everything else is treated as a number
 # Lowercase `m` means minutes, uppercase `M` means million.
+#
+# `time-unit` only applies when `value-format: TIME` and the placeholder returns a
+# plain number with no unit (e.g. `%statistic_hours_played%` -> "27").
+#   TICKS | MILLIS | SECONDS | MINUTES | HOURS | DAYS
+# Leaving it unset infers the unit from the placeholder name and falls back to SECONDS.
+# Placeholders that already return a duration ("3h 20m", "12:30") ignore this.
 
 money:
   # Permanent money leaderboard.

@@ -22,8 +22,11 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
     private final Plugin papiPlugin;
     private final boolean hasRecursion;
 
-    
+
     private final ValueKind parseHint;
+
+
+    private final TimeUnitScale bareTimeUnit;
 
     private volatile ValueKind detectedKind = ValueKind.UNKNOWN;
 
@@ -42,9 +45,17 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
     }
 
     public PlaceholderValueProvider(@NotNull Plugin plugin, @NotNull String placeholder, @NotNull ValueKind parseHint) {
-        this.plugin      = Objects.requireNonNull(plugin,      "plugin");
-        this.placeholder = Objects.requireNonNull(placeholder, "placeholder");
-        this.parseHint   = Objects.requireNonNull(parseHint,   "parseHint");
+        this(plugin, placeholder, parseHint, TimeUnitScale.SECONDS);
+    }
+
+    public PlaceholderValueProvider(@NotNull Plugin plugin,
+                                    @NotNull String placeholder,
+                                    @NotNull ValueKind parseHint,
+                                    @NotNull TimeUnitScale bareTimeUnit) {
+        this.plugin       = Objects.requireNonNull(plugin,       "plugin");
+        this.placeholder  = Objects.requireNonNull(placeholder,  "placeholder");
+        this.parseHint    = Objects.requireNonNull(parseHint,    "parseHint");
+        this.bareTimeUnit = Objects.requireNonNull(bareTimeUnit, "bareTimeUnit");
 
         this.papiPlugin = Bukkit.getPluginManager().getPlugin("PlaceholderAPI");
 
@@ -85,7 +96,7 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
             }
 
             final String raw = str;
-            ParsedValue parsed = parse(str, parseHint);
+            ParsedValue parsed = parse(str, parseHint, bareTimeUnit);
             if (parsed != null) {
                 updateDetectedKind(parsed.kind);
                 if (cache.size() >= MAX_CACHE_SIZE) evictExpired(now);
@@ -149,7 +160,11 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
 
     
     private static ParsedValue parse(String s) {
-        return parse(s, ValueKind.UNKNOWN);
+        return parse(s, ValueKind.UNKNOWN, TimeUnitScale.SECONDS);
+    }
+
+    private static ParsedValue parse(String s, @NotNull ValueKind hint) {
+        return parse(s, hint, TimeUnitScale.SECONDS);
     }
 
     
@@ -167,7 +182,7 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
 
 
 
-    private static ParsedValue parse(String s, @NotNull ValueKind hint) {
+    private static ParsedValue parse(String s, @NotNull ValueKind hint, @NotNull TimeUnitScale bareTimeUnit) {
         if (hint != ValueKind.NUMBER) {
             Double colonSeconds = parseColon(s);
             if (colonSeconds != null) return new ParsedValue(colonSeconds, ValueKind.TIME);
@@ -176,9 +191,11 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
             if (durationSeconds != null) return new ParsedValue(durationSeconds, ValueKind.TIME);
 
             if (hint == ValueKind.TIME) {
-                
+
+
                 ParsedValue number = parseNumber(s, false);
-                return number == null ? null : new ParsedValue(number.value, ValueKind.TIME);
+                return number == null ? null
+                        : new ParsedValue(bareTimeUnit.toSeconds(number.value), ValueKind.TIME);
             }
         }
 

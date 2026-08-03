@@ -18,6 +18,7 @@ public final class TopConfig {
     private final String displayName;
     private final ConditionSet conditionSet;
     private final String valueFormat;
+    private final String timeUnit;
     private final boolean allowZeroValues;
 
     private TopConfig(@NotNull Builder builder) {
@@ -32,6 +33,7 @@ public final class TopConfig {
         this.displayName = builder.displayName;
         this.conditionSet = builder.conditionSet;
         this.valueFormat = builder.valueFormat;
+        this.timeUnit = builder.timeUnit;
         this.allowZeroValues = builder.allowZeroValues;
     }
 
@@ -47,6 +49,15 @@ public final class TopConfig {
     @Nullable
     public String getValueFormat() {
         return valueFormat;
+    }
+
+    /**
+     * Unit bare numeric values are expressed in when {@code valueFormat} is TIME
+     * (SECONDS, MINUTES, HOURS, DAYS, TICKS, MILLIS). Null means "infer".
+     */
+    @Nullable
+    public String getTimeUnit() {
+        return timeUnit;
     }
 
     @NotNull
@@ -103,6 +114,7 @@ public final class TopConfig {
         private String displayName = null;
         private ConditionSet conditionSet = EMPTY;
         private String valueFormat = null;
+        private String timeUnit = null;
         private boolean allowZeroValues = false;
 
         private Builder() {
@@ -189,6 +201,12 @@ public final class TopConfig {
         @NotNull
         public Builder valueFormat(@Nullable String valueFormat) {
             this.valueFormat = valueFormat;
+            return this;
+        }
+
+        @NotNull
+        public Builder timeUnit(@Nullable String timeUnit) {
+            this.timeUnit = timeUnit;
             return this;
         }
 
