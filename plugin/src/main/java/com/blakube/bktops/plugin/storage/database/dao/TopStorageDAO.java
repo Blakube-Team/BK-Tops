@@ -36,8 +36,7 @@ public final class TopStorageDAO<K> {
         List<TopEntry<K>> entries = new ArrayList<>();
 
         String sql = String.format(
-                "SELECT identifier, display_name, top_value, last_updated FROM %s " +
-                "ORDER BY top_value DESC, last_updated ASC, identifier ASC",
+                "SELECT identifier, display_name, top_value, last_updated FROM %s ORDER BY top_value DESC, last_updated ASC, identifier ASC",
                 tableName
         );
 
@@ -72,8 +71,7 @@ public final class TopStorageDAO<K> {
         List<TopEntry<K>> entries = new ArrayList<>();
 
         String sql = String.format(
-                "SELECT identifier, display_name, top_value, last_updated FROM %s " +
-                "ORDER BY top_value DESC, last_updated ASC, identifier ASC LIMIT ?",
+                "SELECT identifier, display_name, top_value, last_updated FROM %s ORDER BY top_value DESC, last_updated ASC, identifier ASC LIMIT ?",
                 tableName
         );
 
@@ -191,8 +189,7 @@ public final class TopStorageDAO<K> {
     private String buildTrimSql() {
         return String.format(
                 "DELETE FROM %s WHERE identifier NOT IN " +
-                "(SELECT identifier FROM (SELECT identifier FROM %s " +
-                "ORDER BY top_value DESC, last_updated ASC, identifier ASC LIMIT ?) AS keep_list)",
+                "(SELECT identifier FROM (SELECT identifier FROM %s ORDER BY top_value DESC, last_updated ASC, identifier ASC LIMIT ?) AS keep_list)",
                 tableName, tableName);
     }
 
@@ -295,10 +292,7 @@ public final class TopStorageDAO<K> {
     public Optional<TopEntry<K>> get(@NotNull K identifier) {
         String sql = String.format(
                 "SELECT display_name, top_value, last_updated, " +
-                "(SELECT COUNT(*) + 1 FROM %s WHERE " +
-                "top_value > t.top_value OR " +
-                "(top_value = t.top_value AND (last_updated < t.last_updated OR " +
-                "(last_updated = t.last_updated AND identifier < t.identifier)))) AS position " +
+                "(SELECT COUNT(*) + 1 FROM %s WHERE top_value > t.top_value OR (top_value = t.top_value AND last_updated < t.last_updated) OR (top_value = t.top_value AND last_updated = t.last_updated AND identifier < t.identifier)) AS position " +
                 "FROM %s t WHERE identifier = ?",
                 tableName, tableName
         );
@@ -329,11 +323,10 @@ public final class TopStorageDAO<K> {
     }
 
     public int getPosition(@NotNull K identifier) {
+        
+        
         String sql = String.format(
-                "SELECT (SELECT COUNT(*) + 1 FROM %s WHERE " +
-                "top_value > t.top_value OR " +
-                "(top_value = t.top_value AND (last_updated < t.last_updated OR " +
-                "(last_updated = t.last_updated AND identifier < t.identifier)))) as position " +
+                "SELECT (SELECT COUNT(*) + 1 FROM %s WHERE top_value > t.top_value OR (top_value = t.top_value AND last_updated < t.last_updated) OR (top_value = t.top_value AND last_updated = t.last_updated AND identifier < t.identifier)) as position " +
                 "FROM %s t WHERE identifier = ?",
                 tableName, tableName
         );
@@ -440,8 +433,7 @@ public final class TopStorageDAO<K> {
 
     public boolean removeLowest() {
         String sql = String.format(
-                "DELETE FROM %s WHERE identifier = (SELECT identifier FROM %s " +
-                "ORDER BY top_value ASC, last_updated DESC, identifier DESC LIMIT 1)",
+                "DELETE FROM %s WHERE identifier = (SELECT identifier FROM %s ORDER BY top_value ASC, last_updated DESC, identifier DESC LIMIT 1)",
                 tableName, tableName
         );
 

@@ -99,14 +99,14 @@ public final class TopLoader implements Loader<TopRegistry<UUID>> {
             throw new ConfigException("Missing placeholder for top '" + topId + "'");
         }
 
-        if (PlaceholderValueProvider.hasProviderRecursion(providerPlaceholder)) {
+        String lowerProvider = providerPlaceholder.toLowerCase();
+        if (lowerProvider.contains("%bktops_")) {
             throw new ConfigException(
                 "Invalid provider for top '" + topId + "': '" + providerPlaceholder + "'. " +
                 "Do not use BK-Tops placeholders as data providers (it causes recursion). " +
                 "Use a base placeholder (e.g., Vault balance) instead."
             );
         }
-
         ValueProvider<UUID> baseProvider;
         NameResolver<UUID> nameResolver;
 

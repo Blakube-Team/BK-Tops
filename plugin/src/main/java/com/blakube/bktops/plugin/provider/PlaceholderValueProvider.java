@@ -4,17 +4,11 @@ import com.blakube.bktops.api.provider.ValueProvider;
 import com.blakube.bktops.plugin.debug.Debug;
 import me.clip.placeholderapi.PlaceholderAPI;
 import org.bukkit.Bukkit;
-import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.Statistic;
-import org.bukkit.entity.EntityType;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,7 +21,6 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
     private final String placeholder;
     private final Plugin papiPlugin;
     private final boolean hasRecursion;
-    private final @Nullable StatisticQuery statisticQuery;
 
 
     private final ValueKind parseHint;
@@ -46,13 +39,6 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
     private final ConcurrentHashMap<UUID, CacheEntry> cache = new ConcurrentHashMap<>(256);
 
     private final java.util.concurrent.atomic.AtomicBoolean recursionWarned = new java.util.concurrent.atomic.AtomicBoolean(false);
-
-    private static final Material[] BLOCK_MATERIALS = buildMaterials(Material::isBlock);
-    private static final Material[] ITEM_MATERIALS = buildMaterials(Material::isItem);
-    private static final EntityType[] ENTITY_TYPES = buildEntityTypes();
-
-    private static final ConcurrentHashMap<Statistic, java.util.Set<Material>> INVALID_MATERIALS = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Statistic, java.util.Set<EntityType>> INVALID_ENTITIES = new ConcurrentHashMap<>();
 
     public PlaceholderValueProvider(@NotNull Plugin plugin, @NotNull String placeholder) {
         this(plugin, placeholder, ValueKind.UNKNOWN);
@@ -73,8 +59,8 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
 
         this.papiPlugin = Bukkit.getPluginManager().getPlugin("PlaceholderAPI");
 
-        this.hasRecursion = hasProviderRecursion(placeholder);
-        this.statisticQuery = parseStatisticQuery(placeholder);
+        String lower = placeholder.toLowerCase();
+        this.hasRecursion = lower.contains("%bktops_") || lower.contains("% bktops_");
     }
 
     @Override
@@ -98,9 +84,7 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
 
         OfflinePlayer offline = Bukkit.getOfflinePlayer(identifier);
         try {
-            String str = statisticQuery != null
-                    ? resolveStatistic(offline, statisticQuery)
-                    : PlaceholderAPI.setPlaceholders(offline, placeholder);
+            String str = PlaceholderAPI.setPlaceholders(offline, placeholder);
             if (str == null) {
                 Debug.log(() -> "PAPI returned null for " + placeholder + " (player " + identifier + ")");
                 return null;
@@ -150,166 +134,6 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
 
     private void evictExpired(long now) {
         cache.entrySet().removeIf(e -> (now - e.getValue().time) > DEFAULT_TTL_MILLIS);
-    }
-
-    private static @Nullable StatisticQuery parseStatisticQuery(@NotNull String placeholder) {
-        String normalized = normalizePlaceholder(placeholder);
-        if (!normalized.startsWith("%statistic_") || !normalized.endsWith("%")) return null;
-
-        String identifier = normalized.substring("%statistic_".length(), normalized.length() - 1).trim();
-        if (identifier.isEmpty()) return null;
-
-        int colonIndex = identifier.indexOf(':');
-        String statisticName = (colonIndex < 0 ? identifier : identifier.substring(0, colonIndex)).trim();
-        if (statisticName.isEmpty()) return null;
-
-        Statistic statistic;
-        try {
-            statistic = Statistic.valueOf(statisticName.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
-
-        Statistic.Type type = statistic.getType();
-        if (type != Statistic.Type.BLOCK && type != Statistic.Type.ITEM && type != Statistic.Type.ENTITY) {
-            return null;
-        }
-
-        if (colonIndex < 0) {
-            return StatisticQuery.aggregate(statistic, type);
-        }
-
-        String targetsRaw = identifier.substring(colonIndex + 1).trim();
-        if (targetsRaw.isEmpty()) {
-            return StatisticQuery.aggregate(statistic, type);
-        }
-
-        String[] tokens = targetsRaw.split(",");
-        if (type == Statistic.Type.BLOCK || type == Statistic.Type.ITEM) {
-            List<Material> materials = new ArrayList<>(tokens.length);
-            for (String token : tokens) {
-                Material material = toMaterial(token);
-                if (material != null) materials.add(material);
-            }
-            if (materials.isEmpty()) return null;
-            return StatisticQuery.materialTargets(statistic, type, materials.toArray(Material[]::new));
-        }
-
-        List<EntityType> entities = new ArrayList<>(tokens.length);
-        for (String token : tokens) {
-            EntityType entityType = toEntityType(token);
-            if (entityType != null) entities.add(entityType);
-        }
-        if (entities.isEmpty()) return null;
-        return StatisticQuery.entityTargets(statistic, entities.toArray(EntityType[]::new));
-    }
-
-    private static @Nullable String resolveStatistic(@NotNull OfflinePlayer player, @NotNull StatisticQuery query) {
-        return switch (query.type()) {
-            case BLOCK, ITEM -> resolveMaterialStatistic(player, query);
-            case ENTITY -> resolveEntityStatistic(player, query);
-            default -> null;
-        };
-    }
-
-    private static @NotNull String resolveMaterialStatistic(@NotNull OfflinePlayer player, @NotNull StatisticQuery query) {
-        Material[] source = query.aggregateAll() ? (query.type() == Statistic.Type.BLOCK ? BLOCK_MATERIALS : ITEM_MATERIALS)
-                : query.materials();
-
-        long total = 0L;
-        java.util.Set<Material> invalid = INVALID_MATERIALS.computeIfAbsent(query.statistic(), k -> ConcurrentHashMap.newKeySet());
-        for (Material material : source) {
-            if (invalid.contains(material)) continue;
-            try {
-                total += readStatistic(player, query.statistic(), material);
-            } catch (IllegalArgumentException ignored) {
-                invalid.add(material);
-            }
-        }
-        return Long.toString(total);
-    }
-
-    private static @NotNull String resolveEntityStatistic(@NotNull OfflinePlayer player, @NotNull StatisticQuery query) {
-        EntityType[] source = query.aggregateAll() ? ENTITY_TYPES : query.entities();
-
-        long total = 0L;
-        java.util.Set<EntityType> invalid = INVALID_ENTITIES.computeIfAbsent(query.statistic(), k -> ConcurrentHashMap.newKeySet());
-        for (EntityType entityType : source) {
-            if (invalid.contains(entityType)) continue;
-            try {
-                total += readStatistic(player, query.statistic(), entityType);
-            } catch (IllegalArgumentException ignored) {
-                invalid.add(entityType);
-            }
-        }
-        return Long.toString(total);
-    }
-
-    private static int readStatistic(@NotNull OfflinePlayer player, @NotNull Statistic statistic, @NotNull Material material) {
-        if (player.isOnline() && player.getPlayer() != null) {
-            return player.getPlayer().getStatistic(statistic, material);
-        }
-        return player.getStatistic(statistic, material);
-    }
-
-    private static int readStatistic(@NotNull OfflinePlayer player, @NotNull Statistic statistic, @NotNull EntityType entityType) {
-        if (player.isOnline() && player.getPlayer() != null) {
-            return player.getPlayer().getStatistic(statistic, entityType);
-        }
-        return player.getStatistic(statistic, entityType);
-    }
-
-    private static Material @NotNull [] buildMaterials(@NotNull java.util.function.Predicate<Material> predicate) {
-        List<Material> result = new ArrayList<>();
-        for (Material material : Material.values()) {
-            if (isLegacyMaterial(material)) continue;
-            if (predicate.test(material)) result.add(material);
-        }
-        return result.toArray(Material[]::new);
-    }
-
-    private static EntityType @NotNull [] buildEntityTypes() {
-        List<EntityType> result = new ArrayList<>();
-        for (EntityType entityType : EntityType.values()) {
-            if (entityType == EntityType.UNKNOWN) continue;
-            if (entityType.name().startsWith("LEGACY_")) continue;
-            result.add(entityType);
-        }
-        return result.toArray(EntityType[]::new);
-    }
-
-    private static boolean isLegacyMaterial(@NotNull Material material) {
-        return material.name().startsWith("LEGACY_");
-    }
-
-    private static @Nullable Material toMaterial(@NotNull String token) {
-        String key = token.trim();
-        if (key.isEmpty()) return null;
-        int namespace = key.indexOf(':');
-        if (namespace >= 0 && namespace + 1 < key.length()) {
-            key = key.substring(namespace + 1);
-        }
-        try {
-            Material material = Material.valueOf(key.toUpperCase(Locale.ROOT));
-            return isLegacyMaterial(material) ? null : material;
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
-    }
-
-    private static @Nullable EntityType toEntityType(@NotNull String token) {
-        String key = token.trim();
-        if (key.isEmpty()) return null;
-        int namespace = key.indexOf(':');
-        if (namespace >= 0 && namespace + 1 < key.length()) {
-            key = key.substring(namespace + 1);
-        }
-        try {
-            EntityType entityType = EntityType.valueOf(key.toUpperCase(Locale.ROOT));
-            return entityType == EntityType.UNKNOWN ? null : entityType;
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
     }
 
     private static final Pattern COLON_TIME = Pattern.compile("^\\d{1,3}:[0-5]?\\d(?::[0-5]?\\d)?$");
@@ -492,44 +316,4 @@ public final class PlaceholderValueProvider implements ValueProvider<UUID>, Dete
 
     @Override
     public boolean isAvailable() { return papiPlugin != null && papiPlugin.isEnabled(); }
-
-    public static boolean hasProviderRecursion(@NotNull String placeholder) {
-        String lower = normalizePlaceholder(placeholder);
-        return lower.contains("%bktops_") || lower.contains("% bktops_");
-    }
-
-    public static boolean isStatisticAggregator(@NotNull String placeholder) {
-        StatisticQuery query = parseStatisticQuery(placeholder);
-        return query != null && query.isAggregation();
-    }
-
-    private static @NotNull String normalizePlaceholder(@NotNull String placeholder) {
-        return placeholder.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private record StatisticQuery(Statistic statistic,
-                                  Statistic.Type type,
-                                  boolean aggregateAll,
-                                  Material[] materials,
-                                  EntityType[] entities) {
-
-        private static @NotNull StatisticQuery aggregate(@NotNull Statistic statistic, @NotNull Statistic.Type type) {
-            return new StatisticQuery(statistic, type, true, new Material[0], new EntityType[0]);
-        }
-
-        private static @NotNull StatisticQuery materialTargets(@NotNull Statistic statistic,
-                                                                @NotNull Statistic.Type type,
-                                                                Material @NotNull [] materials) {
-            return new StatisticQuery(statistic, type, false, materials, new EntityType[0]);
-        }
-
-        private static @NotNull StatisticQuery entityTargets(@NotNull Statistic statistic,
-                                                              EntityType @NotNull [] entities) {
-            return new StatisticQuery(statistic, Statistic.Type.ENTITY, false, new Material[0], entities);
-        }
-
-        private boolean isAggregation() {
-            return aggregateAll || materials.length > 1 || entities.length > 1;
-        }
-    }
 }
