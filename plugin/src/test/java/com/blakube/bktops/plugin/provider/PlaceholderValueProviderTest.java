@@ -8,6 +8,39 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PlaceholderValueProviderTest {
 
+    @Test
+    void statisticAggregatorsAreDetectedGenerically() {
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator("%statistic_mine_block%"));
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator(" %STATISTIC_USE_ITEM% "));
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator("%statistic_break_item%"));
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator("%statistic_craft_item%"));
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator("%statistic_kill_entity%"));
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator("%statistic_entity_killed_by%"));
+    }
+
+    @Test
+    void statisticPlaceholdersWithExplicitTargetAreNotMarkedAsAggregator() {
+        assertFalse(PlaceholderValueProvider.isStatisticAggregator("%statistic_mine_block:stone%"));
+        assertFalse(PlaceholderValueProvider.isStatisticAggregator("%statistic_use_item:diamond_pickaxe%"));
+        assertFalse(PlaceholderValueProvider.isStatisticAggregator("%statistic_break_item:iron_pickaxe%"));
+        assertFalse(PlaceholderValueProvider.isStatisticAggregator("%statistic_craft_item:crafting_table%"));
+        assertFalse(PlaceholderValueProvider.isStatisticAggregator("%statistic_kill_entity:zombie%"));
+    }
+
+    @Test
+    void statisticPlaceholdersWithMultipleTargetsAreMarkedAsAggregator() {
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator("%statistic_mine_block:stone,dirt%"));
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator("%statistic_use_item:diamond_pickaxe,iron_pickaxe%"));
+        assertTrue(PlaceholderValueProvider.isStatisticAggregator("%statistic_kill_entity:zombie,skeleton%"));
+    }
+
+    @Test
+    void recursionProviderDetectionMatchesBktopsPlaceholders() {
+        assertTrue(PlaceholderValueProvider.hasProviderRecursion("%bktops_money_top_1_name%"));
+        assertTrue(PlaceholderValueProvider.hasProviderRecursion("% BkToPs_money_top_1_value%"));
+        assertFalse(PlaceholderValueProvider.hasProviderRecursion("%vault_eco_balance%"));
+    }
+
     private Double parse(String input) throws Exception {
         Method m = PlaceholderValueProvider.class.getDeclaredMethod("parse", String.class);
         m.setAccessible(true);
