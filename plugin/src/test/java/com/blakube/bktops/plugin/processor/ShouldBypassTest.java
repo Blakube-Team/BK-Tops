@@ -33,6 +33,28 @@ class ShouldBypassTest {
 
     @BeforeEach
     void setUp() {
+        DatabaseExecutors.DB_EXECUTOR = new java.util.concurrent.ExecutorService() {
+            public void shutdown() {}
+            public java.util.List<Runnable> shutdownNow() { return null; }
+            public boolean isShutdown() { return false; }
+            public boolean isTerminated() { return false; }
+            public boolean awaitTermination(long timeout, java.util.concurrent.TimeUnit unit) { return true; }
+            public <T> java.util.concurrent.Future<T> submit(java.util.concurrent.Callable<T> task) {
+                try { task.call(); } catch (Exception ignored) {}
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
+            public <T> java.util.concurrent.Future<T> submit(Runnable task, T result) {
+                task.run(); return java.util.concurrent.CompletableFuture.completedFuture(result);
+            }
+            public java.util.concurrent.Future<?> submit(Runnable task) {
+                task.run(); return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
+            public <T> java.util.List<java.util.concurrent.Future<T>> invokeAll(java.util.Collection<? extends java.util.concurrent.Callable<T>> tasks) { return null; }
+            public <T> java.util.List<java.util.concurrent.Future<T>> invokeAll(java.util.Collection<? extends java.util.concurrent.Callable<T>> tasks, long timeout, java.util.concurrent.TimeUnit unit) { return null; }
+            public <T> T invokeAny(java.util.Collection<? extends java.util.concurrent.Callable<T>> tasks) { return null; }
+            public <T> T invokeAny(java.util.Collection<? extends java.util.concurrent.Callable<T>> tasks, long timeout, java.util.concurrent.TimeUnit unit) { return null; }
+            public void execute(Runnable command) { command.run(); }
+        };
         playerId = UUID.randomUUID();
         mockPlayer = mock(Player.class);
         results = new ArrayList<>();
@@ -40,6 +62,7 @@ class ShouldBypassTest {
         JavaPlugin plugin = mock(JavaPlugin.class);
         org.bukkit.configuration.file.FileConfiguration mockConfig = mock(org.bukkit.configuration.file.FileConfiguration.class);
         when(plugin.getConfig()).thenReturn(mockConfig);
+        when(plugin.isEnabled()).thenReturn(true);
         when(mockConfig.getBoolean("debug", false)).thenReturn(false);
         when(plugin.getLogger()).thenReturn(Logger.getLogger("test"));
 

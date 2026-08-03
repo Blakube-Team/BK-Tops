@@ -73,34 +73,17 @@ public final class DefaultTopProcessor<K> implements TopProcessor<K> {
     }
 
     private void processBatchOptimized(@NotNull List<QueueEntry<K>> entries) {
-        if (Bukkit.isPrimaryThread()) {
-            List<PreResolved<K>> preResolved = collectValues(entries);
-            if (preResolved.isEmpty()) return;
-            CompletableFuture
-                    .runAsync(() -> dispatchPhase2(preResolved), DatabaseExecutors.DB_EXECUTOR)
-                    .exceptionally(ex -> {
-                        plugin.getLogger().warning("[BK-Tops] Batch error: " + ex.getMessage());
-                        return null;
-                    });
-        } else {
-            if (!plugin.isEnabled()) return;
-            CompletableFuture<List<PreResolved<K>>> collectFuture = new CompletableFuture<>();
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                try {
-                    collectFuture.complete(collectValues(entries));
-                } catch (Throwable t) {
-                    collectFuture.completeExceptionally(t);
-                }
-            });
-            collectFuture
-                    .thenAcceptAsync(preResolved -> {
-                        if (!preResolved.isEmpty()) dispatchPhase2(preResolved);
-                    }, DatabaseExecutors.DB_EXECUTOR)
-                    .exceptionally(ex -> {
-                        plugin.getLogger().warning("[BK-Tops] Batch error: " + ex.getMessage());
-                        return null;
-                    });
-        }
+        if (!plugin.isEnabled()) return;
+        
+        CompletableFuture
+                .supplyAsync(() -> collectValues(entries), DatabaseExecutors.DB_EXECUTOR)
+                .thenAcceptAsync(preResolved -> {
+                    if (!preResolved.isEmpty()) dispatchPhase2(preResolved);
+                }, DatabaseExecutors.DB_EXECUTOR)
+                .exceptionally(ex -> {
+                    plugin.getLogger().warning("[BK-Tops] Batch error: " + ex.getMessage());
+                    return null;
+                });
     }
 
     private List<PreResolved<K>> collectValues(@NotNull List<QueueEntry<K>> entries) {
