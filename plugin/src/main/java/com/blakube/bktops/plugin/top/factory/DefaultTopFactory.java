@@ -42,7 +42,7 @@ public final class DefaultTopFactory<K> implements TopFactory<K> {
         Objects.requireNonNull(nameResolver,  "nameResolver cannot be null");
         Objects.requireNonNull(storage,       "storage cannot be null");
 
-        return new compilDefaultTop<>(plugin, id, config, valueProvider, nameResolver, storage);
+        return new DefaultTop<>(plugin, id, config, valueProvider, nameResolver, storage);
     }
 
     @Override

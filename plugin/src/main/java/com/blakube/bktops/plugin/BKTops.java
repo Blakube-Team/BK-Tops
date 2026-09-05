@@ -27,6 +27,8 @@ import com.blakube.bktops.plugin.reward.config.RewardConfigLoader;
 import com.blakube.bktops.plugin.reward.config.RewardConfigRegistry;
 import com.blakube.bktops.plugin.reward.item.RTagItemSerializer;
 import com.blakube.bktops.plugin.reward.listener.TopRewardListener;
+import com.blakube.bktops.plugin.registry.history.HistoryRegistry;
+import com.blakube.bktops.plugin.registry.history.HistoryResetListener;
 import com.blakube.bktops.plugin.reward.storage.PendingRewardDAO;
 import com.blakube.bktops.plugin.serializer.UUIDSerializer;
 import com.blakube.bktops.plugin.service.config.ConfigService;
@@ -139,6 +141,7 @@ public class BKTops extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new PlayerQuitListener(registry), this);
         Bukkit.getPluginManager().registerEvents(new TopNotificationListener(notificationService), this);
         Bukkit.getPluginManager().registerEvents(new TopRewardListener(rewardConfigRegistry, pendingRewardService, teamManager), this);
+        Bukkit.getPluginManager().registerEvents(new HistoryResetListener(new HistoryRegistry(this)), this);
     }
 
     private void initNotifications() {

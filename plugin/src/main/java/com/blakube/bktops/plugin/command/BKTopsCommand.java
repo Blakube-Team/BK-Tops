@@ -10,6 +10,7 @@ import com.blakube.bktops.plugin.BKTops;
 import com.blakube.bktops.plugin.formatter.TopValueFormatterProvider;
 import com.blakube.bktops.plugin.notification.EventContext;
 import com.blakube.bktops.plugin.notification.NotificationService;
+import com.blakube.bktops.plugin.registry.history.HistoryRegistry;
 import com.blakube.bktops.plugin.reward.item.RTagItemSerializer;
 import com.blakube.bktops.plugin.service.notify.NotifyService;
 import com.blakube.bktops.plugin.storage.config.ConfigContainerImpl;
@@ -22,17 +23,22 @@ import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Named;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.SuggestWith;
+import revxrsal.commands.autocomplete.SuggestionProvider;
 import revxrsal.commands.bukkit.actor.BukkitCommandActor;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
+import revxrsal.commands.node.ExecutionContext;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -341,6 +347,173 @@ public class BKTopsCommand {
         return TopValueFormatterProvider.isAvailable()
                 ? TopValueFormatterProvider.getInstance().resolve(top).format(value)
                 : String.valueOf(value);
+    }
+
+    private static final int PAGE_SIZE = 10;
+
+    @Subcommand("history export <topId>")
+    public void historyExport(BukkitCommandActor actor,
+                              @Named("topId") @SuggestWith(AllTopsSuggestions.class) String topId) {
+        CommandSender sender = actor.sender();
+        HistoryRegistry registry = HistoryRegistry.getInstance();
+        if (registry == null) {
+            sender.sendMessage(MM.deserialize("<red>History registry is not available."));
+            return;
+        }
+
+        TopAPI api = TopAPIProvider.getInstance();
+        @SuppressWarnings("unchecked")
+        Top<UUID> top = api.getTop(topId);
+        if (top == null) {
+            notifyService.sendChat(sender, "message.top-not-found");
+            return;
+        }
+
+        List<TopEntry<UUID>> entries = top.getEntries();
+        if (entries.isEmpty()) {
+            sender.sendMessage(MM.deserialize("<yellow>Top <white>" + topId + "</white> has no entries to export."));
+            return;
+        }
+
+        registry.writeExport(top.getId(), entries);
+        sender.sendMessage(MM.deserialize("<green>Exported <yellow>" + entries.size()
+                + "</yellow> entries of <yellow>" + topId + "</yellow> to <white>history/exports</white>."));
+    }
+
+    @Subcommand("history list <type>")
+    public void historyList(BukkitCommandActor actor,
+                            @Named("type") @SuggestWith(TypeSuggestions.class) String type,
+                            @revxrsal.commands.annotation.Optional @Named("topId") @SuggestWith(HistoryTopIdSuggestions.class) String topId) {
+        CommandSender sender = actor.sender();
+        HistoryRegistry registry = HistoryRegistry.getInstance();
+        if (registry == null) {
+            sender.sendMessage(MM.deserialize("<red>History registry is not available."));
+            return;
+        }
+        if (!HistoryRegistry.isValidType(type)) {
+            sender.sendMessage(MM.deserialize("<red>Type must be <white>reset</white> or <white>exports</white>."));
+            return;
+        }
+
+        if (topId == null || topId.isBlank()) {
+            List<String> tops = registry.listTopIds(type);
+            if (tops.isEmpty()) {
+                sender.sendMessage(MM.deserialize("<yellow>No <white>" + type + "</white> history recorded yet."));
+                return;
+            }
+            sender.sendMessage(MM.deserialize("<gold><bold>History</bold></gold> <gray>|</gray> <white>" + type + " — tops"));
+            for (String id : tops) {
+                int count = registry.listDates(type, id).size();
+                sender.sendMessage(MM.deserialize("<gray>  <yellow>" + id + "</yellow> <gray>(" + count + " file(s))"));
+            }
+            sender.sendMessage(MM.deserialize("<gray>Use <white>/bktops history list " + type + " <topId></white> to see dates."));
+            return;
+        }
+
+        List<String> dates = registry.listDates(type, topId);
+        if (dates.isEmpty()) {
+            sender.sendMessage(MM.deserialize("<yellow>No <white>" + type + "</white> history found for <white>" + topId + "</white>."));
+            return;
+        }
+        sender.sendMessage(MM.deserialize("<gold><bold>History</bold></gold> <gray>|</gray> <white>" + type + " — " + topId));
+        for (String date : dates) {
+            sender.sendMessage(MM.deserialize("<gray>  <yellow>" + date));
+        }
+        sender.sendMessage(MM.deserialize("<gray>Use <white>/bktops history show " + type + " " + topId + " <date> [page]</white>."));
+    }
+
+    @Subcommand("history show <type> <topId> <date>")
+    public void historyShow(BukkitCommandActor actor,
+                            @Named("type") @SuggestWith(TypeSuggestions.class) String type,
+                            @Named("topId") @SuggestWith(HistoryTopIdSuggestions.class) String topId,
+                            @Named("date") @SuggestWith(DateSuggestions.class) String date,
+                            @revxrsal.commands.annotation.Optional @Named("page") Integer page) {
+        CommandSender sender = actor.sender();
+        HistoryRegistry registry = HistoryRegistry.getInstance();
+        if (registry == null) {
+            sender.sendMessage(MM.deserialize("<red>History registry is not available."));
+            return;
+        }
+        if (!HistoryRegistry.isValidType(type)) {
+            sender.sendMessage(MM.deserialize("<red>Type must be <white>reset</white> or <white>exports</white>."));
+            return;
+        }
+
+        YamlConfiguration yaml = registry.read(type, topId, date);
+        if (yaml == null) {
+            sender.sendMessage(MM.deserialize("<red>No <white>" + type + "</white> history for <white>" + topId + "</white> at <white>" + date + "</white>."));
+            return;
+        }
+
+        List<Map<?, ?>> entries = yaml.getMapList("entries");
+        if (entries.isEmpty()) {
+            sender.sendMessage(MM.deserialize("<yellow>That file has no entries."));
+            return;
+        }
+
+        int totalPages = (entries.size() + PAGE_SIZE - 1) / PAGE_SIZE;
+        int current = page == null ? 1 : Math.max(1, Math.min(page, totalPages));
+        int from = (current - 1) * PAGE_SIZE;
+        int to = Math.min(from + PAGE_SIZE, entries.size());
+
+        String resetDate = yaml.getString("reset-date", date);
+        sender.sendMessage(MM.deserialize("<gray>──────────────────────────────"));
+        sender.sendMessage(MM.deserialize("<gold><bold>" + topId + "</bold></gold> <gray>|</gray> <white>" + resetDate
+                + "</white> <gray>(page " + current + "/" + totalPages + ")"));
+        sender.sendMessage(MM.deserialize("<gray>──────────────────────────────"));
+        for (int i = from; i < to; i++) {
+            Map<?, ?> row = entries.get(i);
+            Object pos = row.get("position");
+            Object name = row.get("name");
+            Object value = row.get("value");
+            sender.sendMessage(MM.deserialize("<gray>  <gold>#" + pos + "</gold> <white>" + name + "</white> <gray>— <yellow>" + value));
+        }
+        if (current < totalPages) {
+            sender.sendMessage(MM.deserialize("<gray>Next: <white>/bktops history show " + type + " " + topId + " " + date + " " + (current + 1)));
+        }
+        sender.sendMessage(MM.deserialize("<gray>──────────────────────────────"));
+    }
+
+    public static final class TypeSuggestions implements SuggestionProvider<BukkitCommandActor> {
+        @Override
+        public Collection<String> getSuggestions(ExecutionContext<BukkitCommandActor> context) {
+            return List.of(HistoryRegistry.TYPE_RESET, HistoryRegistry.TYPE_EXPORTS);
+        }
+    }
+
+    public static final class HistoryTopIdSuggestions implements SuggestionProvider<BukkitCommandActor> {
+        @Override
+        public Collection<String> getSuggestions(ExecutionContext<BukkitCommandActor> context) {
+            HistoryRegistry registry = HistoryRegistry.getInstance();
+            if (registry == null) return List.of();
+            String type = context.getResolvedArgumentOrNull("type");
+            if (HistoryRegistry.isValidType(type)) return registry.listTopIds(type);
+            List<String> all = new ArrayList<>(registry.listTopIds(HistoryRegistry.TYPE_RESET));
+            all.addAll(registry.listTopIds(HistoryRegistry.TYPE_EXPORTS));
+            return all;
+        }
+    }
+
+    public static final class DateSuggestions implements SuggestionProvider<BukkitCommandActor> {
+        @Override
+        public Collection<String> getSuggestions(ExecutionContext<BukkitCommandActor> context) {
+            HistoryRegistry registry = HistoryRegistry.getInstance();
+            if (registry == null) return List.of();
+            String type = context.getResolvedArgumentOrNull("type");
+            String topId = context.getResolvedArgumentOrNull("topId");
+            if (!HistoryRegistry.isValidType(type) || topId == null) return List.of();
+            return registry.listDates(type, topId);
+        }
+    }
+
+    public static final class AllTopsSuggestions implements SuggestionProvider<BukkitCommandActor> {
+        @Override
+        public Collection<String> getSuggestions(ExecutionContext<BukkitCommandActor> context) {
+            if (!TopAPIProvider.isAvailable()) return List.of();
+            List<String> ids = new ArrayList<>();
+            for (Top top : TopAPIProvider.getInstance().getAllTops()) ids.add(top.getId());
+            return ids;
+        }
     }
 
     private Configuration getTopsConfiguration(CommandSender sender) {
