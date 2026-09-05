@@ -4,8 +4,8 @@ import com.blakube.bktops.api.team.TeamHook;
 import com.blakube.bktops.plugin.service.team.TeamHookHelpService;
 import com.booksaw.betterTeams.Team;
 import com.booksaw.betterTeams.TeamPlayer;
+import org.bukkit.Bukkit;
 
-import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -37,16 +37,15 @@ public final class BetterTeamsHook implements TeamHook {
 
     @Override
     public Set<UUID> getTeamMembers(UUID anyTeamMember) {
-        Set<UUID> members = Set.of();
-        Team team = Team.getTeam(anyTeamMember);
-        if(team == null) return members;
+        Team team = resolveTeam(anyTeamMember);
+        if(team == null) return Set.of();
 
         return team.getMembers().get().stream().map(TeamPlayer::getPlayerUUID).collect(Collectors.toSet());
     }
 
     @Override
     public String getTeamDisplayName(UUID anyTeamMember) {
-        Team team = Team.getTeam(anyTeamMember);
+        Team team = resolveTeam(anyTeamMember);
         if(team == null) return null;
 
         return team.getDisplayName();
@@ -54,7 +53,11 @@ public final class BetterTeamsHook implements TeamHook {
 
     @Override
     public boolean isTeamMember(UUID uuid) {
-        return Team.getTeam(uuid) != null;
+        return resolveTeam(uuid) != null;
+    }
+
+    private Team resolveTeam(UUID playerId) {
+        return Team.getTeam(Bukkit.getOfflinePlayer(playerId));
     }
 
     @Override
