@@ -1,0 +1,8 @@
+name: BK-Tops
+main: com.blakube.bktops.plugin.BKTops
+version: $version
+api-version: 1.20
+folia-supported: true
+authors: [ hhitt, Blakube ]
+description: "The solution for leaderboards where performance and features converge."
+loadbefore: [PlaceholderAPI]

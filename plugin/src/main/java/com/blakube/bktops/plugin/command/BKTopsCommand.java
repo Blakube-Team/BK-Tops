@@ -91,13 +91,13 @@ public class BKTopsCommand {
             return;
         }
         notificationService.notifyTopPositionUpdate(EventContext.positionUpdate(
-                player.getName(), "1", "3", "Example_top", "Example_top", "5000", "3200"));
+                player.getName(), "1", "3", "Example_top", "Example Top Name", "5000", "3200"));
         sender.sendMessage(MM.deserialize("<yellow>Fired: top-position-update"));
     }
 
     @Subcommand("notify test reset")
     public void notifyTestReset(BukkitCommandActor actor) {
-        notificationService.notifyTimedTopReset(EventContext.timedReset("Example_top", "Example_top"));
+        notificationService.notifyTimedTopReset(EventContext.timedReset("Example_top", "Example Top Name"));
         actor.sender().sendMessage(MM.deserialize("<yellow>Fired: timed-top-reset"));
     }
 

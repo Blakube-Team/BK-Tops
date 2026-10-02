@@ -23,7 +23,14 @@ public final class TopNotificationListener implements Listener {
 
     @EventHandler
     public void onTimedTopReset(TimedTopResetEvent event) {
-        notifications.notifyTimedTopReset(EventContext.timedReset(event.getTopId(), event.getTopId()));
+        String topName = event.getTopId();
+        if (TopAPIProvider.isAvailable()) {
+            Top<?> top = TopAPIProvider.getInstance().getTop(event.getTopId());
+            if (top != null && top.getConfig().getDisplayName() != null) {
+                topName = top.getConfig().getDisplayName();
+            }
+        }
+        notifications.notifyTimedTopReset(EventContext.timedReset(event.getTopId(), topName));
     }
 
     @EventHandler
@@ -54,12 +61,14 @@ public final class TopNotificationListener implements Listener {
         String newPosStr = String.valueOf(newPos);
         String oldPosStr = wasUnranked ? "" : String.valueOf(oldPos);
 
+        String topName = top.getConfig().getDisplayName() != null ? top.getConfig().getDisplayName() : top.getId();
+
         EventContext ctx = EventContext.positionUpdate(
                 event.getDisplayName(),
                 newPosStr,
                 oldPosStr,
                 event.getTopId(),
-                event.getTopId(),
+                topName,
                 event.getFormattedNewValue() != null ? event.getFormattedNewValue() : "0",
                 event.getFormattedOldValue() != null ? event.getFormattedOldValue() : "0"
         );

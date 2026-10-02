@@ -22,6 +22,7 @@ public final class DefaultTopFactory<K> implements TopFactory<K> {
 
     private final TopStorageDAO.IdentifierSerializer<K> serializer;
     private final JavaPlugin plugin;
+    
 
     public DefaultTopFactory(@NotNull TopStorageDAO.IdentifierSerializer<K> serializer,
                              @NotNull JavaPlugin plugin) {
